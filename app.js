@@ -241,7 +241,7 @@ function fuItem(f) {
     ? `<button class="check" data-done="${f.id}" aria-label="Mark done" title="Mark done"></button>`
     : `<button class="btn small" data-reopen="${f.id}">Reopen</button>`;
   const park = f.status === 'open' ? `<button class="btn small" data-park="${f.id}">Park</button>` : '';
-  return `<li class="fu ${f.status}">${ctl}<div class="main"><span class="t">${esc(f.title)}</span><span class="meta">${fuStatus(f)}${who ? `<span>${who}</span>` : ''}</span></div>${park}</li>`;
+  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${who ? `<span>${who}</span>` : ''}</span></div>${park}</li>`;
 }
 function bindFollowups(rerender, root = $view) {
   root.querySelectorAll('[data-done]').forEach((b) => (b.onclick = async () => {
@@ -254,8 +254,40 @@ function bindFollowups(rerender, root = $view) {
   root.querySelectorAll('[data-reopen]').forEach((b) => (b.onclick = async () => {
     b.disabled = true; await q(sb.from('follow_ups').update({ status: 'open', completed_at: null }).eq('id', b.dataset.reopen)); toast('Reopened'); rerender();
   }));
+  root.querySelectorAll('[data-fu-edit]').forEach((b) => (b.onclick = () => editFollowup(b.dataset.fuEdit, rerender)));
 }
 const fuList = (fus, empty) => `<div class="card">${fus.length ? `<ul class="list">${fus.map(fuItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+
+// ---------- edit follow-up (panel) ----------
+async function editFollowup(fuId, rerender) {
+  const f = await q(sb.from('follow_ups').select('id,title,detail,due_date,status,person_id').eq('id', fuId).single());
+  if (!f) return;
+  const people = await loadPeople();
+  openPanel();
+  const who = people.find((p) => p.id === f.person_id);
+  panelHead({ kicker: who ? who.name : 'Follow-up', title: 'Edit follow-up' });
+  const root = $pBody;
+  root.innerHTML = `<form class="card form" id="fef">
+    <label class="lbl" for="fe_title">Title</label><input class="field" id="fe_title" required value="${esc(f.title)}">
+    <div class="grid2"><div><label class="lbl" for="fe_due">Due date</label><input class="field" id="fe_due" type="date" value="${esc(f.due_date || '')}"></div>
+    <div><label class="lbl" for="fe_person">Person</label><select class="field" id="fe_person">${people.map((p) => `<option value="${p.id}"${p.id === f.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
+    <label class="lbl" for="fe_detail">Detail (optional)</label><textarea class="field" id="fe_detail" style="min-height:90px" placeholder="Anything extra — context, what 'done' looks like">${esc(f.detail || '')}</textarea>
+    <label class="lbl">Status</label><div class="pills" id="feStatus">${['open', 'parked', 'closed'].map((s) => `<button type="button" class="pill${f.status === s ? ' on' : ''}" data-s="${s}">${s}</button>`).join('')}</div>
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button></div></form>`;
+  let status = f.status;
+  root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  document.getElementById('fe_cancel').onclick = () => rerender();
+  document.getElementById('fef').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const row = { title: document.getElementById('fe_title').value.trim(), detail: document.getElementById('fe_detail').value.trim() || null,
+      due_date: document.getElementById('fe_due').value || null, person_id: document.getElementById('fe_person').value, status };
+    if (status === 'closed' && f.status !== 'closed') row.completed_at = new Date().toISOString();
+    if (status !== 'closed' && f.status === 'closed') row.completed_at = null;
+    try { await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓'); rerender(); }
+    catch { e.submitter && (e.submitter.disabled = false); }
+  };
+  document.getElementById('fe_title').focus();
+}
 // ---------- scheduled-event rows (shared) ----------
 function evItem(e, showDate = false) {
   const who = e.person ? `<a href="#/p/${e.person.id}">${esc(e.person.name)}</a>` : '';
