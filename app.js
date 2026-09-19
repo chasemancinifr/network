@@ -399,6 +399,59 @@ async function renderEvents() {
   bindEvents(renderEvents, $view, (id) => editEvent(id, slot, renderEvents));
 }
 
+// ---------- recent activity ----------
+function agoShort(ts) {
+  const ms = Date.now() - new Date(ts).getTime();
+  if (!(ms >= 0)) return fmtDate(ts);
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  if (ms < 86400000) return `${Math.floor(m / 60)}h ago`;
+  return ago(String(ts).slice(0, 10));
+}
+const feedDay = (ts) => { const s = String(ts); return s.length === 10 ? s : new Date(s).toLocaleDateString('en-CA'); };
+function actItem(it) {
+  const who = it.person ? `<a href="#/p/${it.person.id}">${esc(it.person.name)}</a>` : '';
+  let desc = '', kind = '';
+  if (it.k === 'interaction') { desc = `Logged ${esc(it.i.kind)}${who ? ` with ${who}` : ''}`; kind = st('amber', 'Interaction'); }
+  else if (it.k === 'fu_done') { desc = `Completed '${esc(it.f.title)}'${who ? ` · ${who}` : ''}`; kind = st('ring', 'Done'); }
+  else if (it.k === 'fu_created') { desc = `New follow-up '${esc(it.f.title)}'${who ? ` · ${who}` : ''}`; kind = st('gray', 'Follow-up'); }
+  else if (it.k === 'person') { desc = `Added ${who}`; kind = st('gray', 'Person'); }
+  else { desc = `Scheduled '${esc(it.e.title)}' for ${monoDate(it.e.event_date)}${who ? ` · ${who}` : ''}`; kind = st('gray', 'Event'); }
+  const sub = it.k === 'interaction' && it.i.summary ? `<span>${esc(it.i.summary.slice(0, 140))}</span>` : '';
+  return `<li class="fu"><div class="main"><span class="t">${desc}</span><span class="meta">${kind}<span>${agoShort(it.ts)}</span>${sub}</span></div></li>`;
+}
+async function renderRecent() {
+  setHead({ kicker: 'Activity', title: 'Recent', tab: 'recent', add: true });
+  const t = today();
+  const [ints, fus, ppl, evs] = await Promise.all([
+    q(sb.from('interactions').select('id,kind,happened_at,summary,person:people(id,name)').order('happened_at', { ascending: false }).limit(100)),
+    q(sb.from('follow_ups').select('id,title,status,created_at,completed_at,person:people(id,name)').order('created_at', { ascending: false }).limit(100)),
+    q(sb.from('people').select('id,name,created_at').is('archived_at', null).order('created_at', { ascending: false }).limit(100)),
+    q(sb.from('events').select('id,title,event_date,created_at,person:people(id,name)').order('created_at', { ascending: false }).limit(100)),
+  ]);
+  const feed = [];
+  ints.forEach((i) => i.happened_at && feed.push({ ts: i.happened_at, k: 'interaction', i, person: i.person }));
+  fus.forEach((f) => {
+    if (f.created_at) feed.push({ ts: f.created_at, k: 'fu_created', f, person: f.person });
+    if (f.status === 'closed' && f.completed_at) feed.push({ ts: f.completed_at, k: 'fu_done', f, person: f.person });
+  });
+  ppl.forEach((p) => p.created_at && feed.push({ ts: p.created_at, k: 'person', person: p }));
+  evs.forEach((e) => e.created_at && feed.push({ ts: e.created_at, k: 'event', e, person: e.person }));
+  feed.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0));
+  const items = feed.slice(0, 100);
+  const groups = [];
+  items.forEach((it) => {
+    const d = feedDay(it.ts);
+    const g = groups[groups.length - 1];
+    if (g && g.d === d) g.items.push(it); else groups.push({ d, items: [it] });
+  });
+  $view.innerHTML = groups.length ? groups.map((g) => `
+    <div class="daydiv">${g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
+    <div class="card"><ul class="list">${g.items.map(actItem).join('')}</ul></div>`).join('')
+    : '<div class="card empty">No activity yet.</div>';
+}
+
 // ---------- people ----------
 async function renderPeople() {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
@@ -659,7 +712,7 @@ function renderPassword() {
 }
 
 // ---------- router ----------
-const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/events': renderEvents, '#/calendar': renderCalendar };
+const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/events': renderEvents, '#/recent': renderRecent, '#/calendar': renderCalendar };
 function panelRoute(h) {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return () => renderEdit(m[1]);
