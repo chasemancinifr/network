@@ -82,25 +82,38 @@ function renderLogin(step = 'email', email = '') {
   chrome({ title: 'Network' });
   $view.innerHTML = step === 'email' ? `
     <div class="login">
-      <h3>Your network</h3><p>Sign in with your email. You'll get a sign-in link.</p>
-      <form id="f"><input class="field" type="email" id="email" required autocomplete="email" placeholder="you@email.com" value="${esc(email)}">
-      <button class="btn primary" id="go">Send link</button></form>
+      <h3>Your network</h3><p>Sign in once. Your phone keeps you signed in.</p>
+      <form id="f">
+        <input class="field" type="email" id="email" name="username" required autocomplete="username" placeholder="you@email.com" value="${esc(email)}">
+        <input class="field" type="password" id="pw" name="password" autocomplete="current-password" placeholder="Password">
+        <button class="btn primary" id="go">Sign in</button>
+      </form>
+      <p style="font-size:14px"><a href="#" id="linkInstead">No password yet? Email me a sign-in link</a></p>
     </div>` : `
     <div class="login">
       <h3>Check your email</h3><p>We sent a sign-in link to<br><b>${esc(email)}</b></p>
       <p style="font-size:14px">In a browser: just tap the link.<br>In the home-screen app: long-press the link in the email, tap <b>Copy Link</b>, and paste it here.</p>
       <form id="f"><input class="field" id="code" required placeholder="Paste link (or code)" autocomplete="one-time-code">
       <button class="btn primary" id="go">Sign in</button></form>
-      <p><a href="#" id="again">Use a different email</a></p>
+      <p><a href="#" id="again">Back</a></p>
     </div>`;
   const f = document.getElementById('f');
   if (step === 'email') {
-    f.onsubmit = async (e) => {
-      e.preventDefault(); const em = document.getElementById('email').value.trim();
-      document.getElementById('go').disabled = true;
-      const { error } = await sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } });
-      if (error) { toast(error.message, true); document.getElementById('go').disabled = false; return; }
+    const sendLink = async () => {
+      const em = document.getElementById('email').value.trim();
+      if (!em) { toast('Enter your email first', true); return; }
+      const { error } = await sb.auth.signInWithOtp({ email: em, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
+      if (error) { toast(error.message, true); return; }
       renderLogin('code', em);
+    };
+    document.getElementById('linkInstead').onclick = (e) => { e.preventDefault(); sendLink(); };
+    f.onsubmit = async (e) => {
+      e.preventDefault();
+      const em = document.getElementById('email').value.trim(), pw = document.getElementById('pw').value;
+      if (!pw) return sendLink();
+      document.getElementById('go').disabled = true;
+      const { error } = await sb.auth.signInWithPassword({ email: em, password: pw });
+      if (error) { toast(error.message === 'Invalid login credentials' ? "Wrong password (or none set yet: use the email link)" : error.message, true); document.getElementById('go').disabled = false; }
     };
   } else {
     document.getElementById('again').onclick = (e) => { e.preventDefault(); renderLogin('email', email); };
@@ -147,7 +160,7 @@ async function renderToday() {
     <h2>Open follow-ups (${fus.length})</h2>
     <div class="card">${fus.length ? `<ul class="list">${fus.map(fuItem).join('')}</ul>` : '<div class="empty">All clear.</div>'}</div>
     ${upcoming.length ? `<h2>On cadence</h2><ul class="list card">${upcoming.map((x) => personRow(x.p, `<span class="badge">${esc(x.d.label)}</span>`)).join('')}</ul>` : ''}
-    <p style="text-align:center;margin-top:28px"><a href="#" id="signout" style="color:var(--muted);font-size:14px">Sign out</a></p>`;
+    <p style="text-align:center;margin-top:28px;font-size:14px"><a href="#/password" style="color:var(--muted)">Set password</a> &nbsp;·&nbsp; <a href="#" id="signout" style="color:var(--muted)">Sign out</a></p>`;
   bindFollowups(renderToday);
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
@@ -357,6 +370,23 @@ async function renderEdit(id) {
   };
 }
 
+// ---------- password ----------
+function renderPassword() {
+  chrome({ title: 'Password', back: true });
+  const email = state.session?.user?.email || '';
+  $view.innerHTML = `<form class="card form" id="pf">
+    <p style="margin-top:0;color:var(--muted);font-size:14px">Set a password so signing in on a new device (or after signing out) is one tap with Face ID instead of an email link. Let your iPhone suggest a strong password and save it.</p>
+    <input type="email" name="username" autocomplete="username" value="${esc(email)}" readonly class="field" style="margin-bottom:8px;color:var(--muted)">
+    <label class="lbl">New password</label><input class="field" type="password" id="np" name="new-password" autocomplete="new-password" required minlength="8">
+    <div class="actions" style="margin-top:14px"><button class="btn primary">Save password</button></div></form>`;
+  document.getElementById('pf').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const { error } = await sb.auth.updateUser({ password: document.getElementById('np').value });
+    if (error) { toast(error.message, true); e.submitter && (e.submitter.disabled = false); return; }
+    toast('Password saved ✓'); location.hash = '#/today';
+  };
+}
+
 // ---------- router ----------
 async function route() {
   if (!state.session) return renderLogin();
@@ -367,6 +397,7 @@ async function route() {
     if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return await renderEdit(m[1]);
     if ((m = h.match(/^#\/p\/([0-9a-f-]{36})$/))) return await renderPerson(m[1]);
     if (h === '#/new') return await renderEdit(null);
+    if (h === '#/password') return renderPassword();
     if (h === '#/people') return await renderPeople();
     if (h === '#/followups') return await renderFollowups();
     return await renderToday();
