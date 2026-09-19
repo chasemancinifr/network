@@ -82,13 +82,14 @@ function renderLogin(step = 'email', email = '') {
   chrome({ title: 'Network' });
   $view.innerHTML = step === 'email' ? `
     <div class="login">
-      <h3>Your network</h3><p>Sign in with your email. You'll get a code.</p>
+      <h3>Your network</h3><p>Sign in with your email. You'll get a sign-in link.</p>
       <form id="f"><input class="field" type="email" id="email" required autocomplete="email" placeholder="you@email.com" value="${esc(email)}">
-      <button class="btn primary" id="go">Send code</button></form>
+      <button class="btn primary" id="go">Send link</button></form>
     </div>` : `
     <div class="login">
-      <h3>Check your email</h3><p>Enter the code sent to<br><b>${esc(email)}</b></p>
-      <form id="f"><input class="field" id="code" inputmode="numeric" autocomplete="one-time-code" required placeholder="123456" maxlength="10">
+      <h3>Check your email</h3><p>We sent a sign-in link to<br><b>${esc(email)}</b></p>
+      <p style="font-size:14px">In a browser: just tap the link.<br>In the home-screen app: long-press the link in the email, tap <b>Copy Link</b>, and paste it here.</p>
+      <form id="f"><input class="field" id="code" required placeholder="Paste link (or code)" autocomplete="one-time-code">
       <button class="btn primary" id="go">Sign in</button></form>
       <p><a href="#" id="again">Use a different email</a></p>
     </div>`;
@@ -105,8 +106,18 @@ function renderLogin(step = 'email', email = '') {
     document.getElementById('again').onclick = (e) => { e.preventDefault(); renderLogin('email', email); };
     f.onsubmit = async (e) => {
       e.preventDefault(); document.getElementById('go').disabled = true;
-      const token = document.getElementById('code').value.replace(/\D/g, '');
-      const { error } = await sb.auth.verifyOtp({ email, token, type: 'email' });
+      const raw = document.getElementById('code').value.trim();
+      let res;
+      if (/^https?:\/\//.test(raw)) {
+        const u = new URL(raw);
+        const hash = u.searchParams.get('token') || u.searchParams.get('token_hash');
+        const type = u.searchParams.get('type') || 'magiclink';
+        if (!hash) { toast("That link doesn't look like the sign-in link", true); document.getElementById('go').disabled = false; return; }
+        res = await sb.auth.verifyOtp({ token_hash: hash, type });
+      } else {
+        res = await sb.auth.verifyOtp({ email, token: raw.replace(/\D/g, ''), type: 'email' });
+      }
+      const { error } = res;
       if (error) { toast(error.message, true); document.getElementById('go').disabled = false; }
     };
   }
