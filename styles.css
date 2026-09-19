@@ -94,3 +94,10 @@ details.more { padding: 0 16px 12px; } details.more summary { color: var(--accen
 .seg { display: flex; background: var(--surface2); border-radius: 10px; padding: 3px; gap: 3px; }
 .seg button { flex: 1; border: 0; background: none; padding: 7px 0; border-radius: 8px; color: var(--muted); cursor: pointer; }
 .seg button.on { background: var(--surface); color: var(--text); }
+
+.pwwrap { position: relative; }
+.pwwrap .field { padding-right: 64px; }
+.eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--accent);
+  font-size: 14px; font-weight: 600; padding: 6px 8px; cursor: pointer; }
+.login .pwwrap { margin: 8px 0; }
+.login .pwwrap .field { margin: 0; }

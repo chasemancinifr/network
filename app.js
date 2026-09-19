@@ -77,6 +77,17 @@ const personRow = (p, extra = '') => `
       <div class="sub">${esc([p.role, p.dept].filter(Boolean).join(' · ') || p.relationship || (p.circles || []).join(', '))}</div></span>
     ${extra}</a></li>`;
 
+function pwField(id, name, autocomplete, placeholder, extra = '') {
+  return `<div class="pwwrap"><input class="field" type="password" id="${id}" name="${name}" autocomplete="${autocomplete}" placeholder="${placeholder}"
+    autocapitalize="off" autocorrect="off" spellcheck="false" ${extra}><button type="button" class="eye" data-eye="${id}" aria-label="Show password">Show</button></div>`;
+}
+function bindEyes() {
+  $view.querySelectorAll('[data-eye]').forEach((b) => (b.onclick = () => {
+    const i = document.getElementById(b.dataset.eye); const show = i.type === 'password';
+    i.type = show ? 'text' : 'password'; b.textContent = show ? 'Hide' : 'Show'; b.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  }));
+}
+
 // ---------- login ----------
 function renderLogin(step = 'email', email = '') {
   chrome({ title: 'Network' });
@@ -84,8 +95,8 @@ function renderLogin(step = 'email', email = '') {
     <div class="login">
       <h3>Your network</h3><p>Sign in once. Your phone keeps you signed in.</p>
       <form id="f">
-        <input class="field" type="email" id="email" name="username" required autocomplete="username" placeholder="you@email.com" value="${esc(email)}">
-        <input class="field" type="password" id="pw" name="password" autocomplete="current-password" placeholder="Password">
+        <input class="field" type="email" id="email" name="username" required autocomplete="username" autocapitalize="off" autocorrect="off" placeholder="you@email.com" value="${esc(email)}">
+        ${pwField('pw', 'password', 'current-password', 'Password')}
         <button class="btn primary" id="go">Sign in</button>
       </form>
       <p style="font-size:14px"><a href="#" id="linkInstead">No password yet? Email me a sign-in link</a></p>
@@ -98,6 +109,7 @@ function renderLogin(step = 'email', email = '') {
       <p><a href="#" id="again">Back</a></p>
     </div>`;
   const f = document.getElementById('f');
+  bindEyes();
   if (step === 'email') {
     const sendLink = async () => {
       const em = document.getElementById('email').value.trim();
@@ -377,8 +389,10 @@ function renderPassword() {
   $view.innerHTML = `<form class="card form" id="pf">
     <p style="margin-top:0;color:var(--muted);font-size:14px">Set a password so signing in on a new device (or after signing out) is one tap with Face ID instead of an email link. Let your iPhone suggest a strong password and save it.</p>
     <input type="email" name="username" autocomplete="username" value="${esc(email)}" readonly class="field" style="margin-bottom:8px;color:var(--muted)">
-    <label class="lbl">New password</label><input class="field" type="password" id="np" name="new-password" autocomplete="new-password" required minlength="8">
+    <label class="lbl">New password</label>${pwField('np', 'new-password', 'new-password', 'At least 8 characters', 'required minlength="8"')}
+    <p style="color:var(--muted);font-size:13px;margin:8px 0 0">Tap Show to check it before saving.</p>
     <div class="actions" style="margin-top:14px"><button class="btn primary">Save password</button></div></form>`;
+  bindEyes();
   document.getElementById('pf').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const { error } = await sb.auth.updateUser({ password: document.getElementById('np').value });
