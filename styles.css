@@ -166,6 +166,9 @@ textarea.field { height: auto; min-height: 96px; padding: 10px 12px; resize: ver
 .fu.closed .main > .t { color: var(--muted); }
 .check { flex: none; width: 20px; height: 20px; margin-top: 1px; border: 1.5px solid var(--muted); border-radius: var(--rp); background: transparent; cursor: pointer; padding: 0; }
 .check:hover { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, transparent); }
+/* scheduled events: amber edge marker, no checkbox semantics */
+.fu.ev { border-left: 2px solid var(--amber); padding-left: 10px; }
+.fu.ev .t { font-weight: 600; }
 
 /* ---------- person detail ---------- */
 .p-hero { display: flex; gap: 12px; align-items: center; padding: 2px 0 14px; }

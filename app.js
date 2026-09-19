@@ -142,6 +142,15 @@ async function loadPeople(force) {
 // the one query for open follow-ups (unchanged from v1); reused by Today, Overdue and Calendar
 const openFollowups = () => q(sb.from('follow_ups').select('id,title,due_date,status,created_at,person:people(id,name,tier)').eq('status', 'open')
   .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));
+// scheduled events: dated things on the calendar (birthday party, dinner, flight) —
+// deliberately separate from follow-ups, which are action items
+const loadEvents = () => q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
+  .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
+function fmtTime(t) {
+  if (!t) return '';
+  const [h, m] = String(t).split(':').map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
 
 function pwField(id, name, autocomplete, placeholder, extra = '') {
   return `<div class="pwwrap"><input class="field" type="password" id="${id}" name="${name}" autocomplete="${autocomplete}" placeholder="${placeholder}"
@@ -247,6 +256,55 @@ function bindFollowups(rerender, root = $view) {
   }));
 }
 const fuList = (fus, empty) => `<div class="card">${fus.length ? `<ul class="list">${fus.map(fuItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+// ---------- scheduled-event rows (shared) ----------
+function evItem(e, showDate = false) {
+  const who = e.person ? `<a href="#/p/${e.person.id}">${esc(e.person.name)}</a>` : '';
+  const when = [showDate ? monoDate(e.event_date) : null, e.event_time ? fmtTime(e.event_time) : null].filter(Boolean).join(' · ');
+  return `<li class="fu ev"><div class="main"><span class="t">${esc(e.title)}</span><span class="meta">${st('amber', 'Event')}${when ? `<span>${esc(when)}</span>` : ''}${who ? `<span>${who}</span>` : ''}${e.notes ? `<span>${esc(e.notes)}</span>` : ''}</span></div><button class="btn small" data-ev-edit="${e.id}">Edit</button><button class="btn small danger" data-ev-del="${e.id}">Delete</button></li>`;
+}
+const evList = (evs, empty, showDate = false) => `<div class="card">${evs.length ? `<ul class="list">${evs.map((e) => evItem(e, showDate)).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+function bindEvents(rerender, root = $view, onEdit) {
+  root.querySelectorAll('[data-ev-del]').forEach((b) => (b.onclick = async () => {
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
+    b.disabled = true; await q(sb.from('events').delete().eq('id', b.dataset.evDel));
+    toast('Deleted'); rerender();
+  }));
+  root.querySelectorAll('[data-ev-edit]').forEach((b) => (b.onclick = () => onEdit && onEdit(b.dataset.evEdit)));
+}
+// shared add/edit event form; renders into `slot`, calls onDone after save
+async function openEventForm(slot, { ev = null, personId = null, date = today(), people, onDone }) {
+  slot.innerHTML = `<form class="card form" id="evf" style="margin-top:12px">
+    <label class="lbl">Event</label><input class="field" id="evt" required placeholder="What's happening" maxlength="120" value="${esc(ev?.title ?? '')}">
+    <div class="grid2">
+      <div><label class="lbl">Date</label><input class="field" type="date" id="evd" value="${esc(ev?.event_date ?? date)}" required></div>
+      <div><label class="lbl">Time (optional)</label><input class="field" type="time" id="evh" value="${esc(String(ev?.event_time ?? '').slice(0, 5))}"></div>
+    </div>
+    <label class="lbl">Person (optional)</label>
+    <select class="field" id="evp"><option value="">—</option>${people.map((p) => `<option value="${p.id}" ${String(ev?.person_id ?? personId ?? '') === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+    <label class="lbl">Notes (optional)</label><textarea class="field" id="evn" style="min-height:70px">${esc(ev?.notes ?? '')}</textarea>
+    <div class="actions" style="margin-top:14px"><button class="btn primary">${ev ? 'Save' : 'Add event'}</button><button type="button" class="btn" id="evx">Cancel</button></div></form>`;
+  document.getElementById('evx').onclick = () => (slot.innerHTML = '');
+  document.getElementById('evf').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const row = { title: document.getElementById('evt').value.trim(), event_date: document.getElementById('evd').value,
+      event_time: document.getElementById('evh').value || null, person_id: document.getElementById('evp').value || null,
+      notes: document.getElementById('evn').value.trim() || null };
+    try {
+      if (ev) await q(sb.from('events').update(row).eq('id', ev.id));
+      else await q(sb.from('events').insert(row));
+      toast(ev ? 'Saved ✓' : 'Event added ✓'); slot.innerHTML = ''; onDone();
+    } catch { e.submitter && (e.submitter.disabled = false); }
+  };
+  document.getElementById('evt').focus();
+}
+async function editEvent(id, slot, onDone) {
+  const [ev, people] = await Promise.all([
+    q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').eq('id', id).single()),
+    loadPeople(),
+  ]);
+  openEventForm(slot, { ev, people, onDone });
+  slot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 function upcomingBirthdays(people, days) {
   const t = today(); const y = +t.slice(0, 4);
   return people.filter((p) => p.birth_month).map((p) => {
@@ -259,8 +317,9 @@ function upcomingBirthdays(people, days) {
 // ---------- today ----------
 async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
-  const [people, fus] = await Promise.all([loadPeople(), openFollowups()]);
+  const [people, fus, evs] = await Promise.all([loadPeople(), openFollowups(), loadEvents()]);
   const t = today();
+  const todayEvs = evs.filter((e) => e.event_date === t);
   const overdue = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const upcoming = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && !x.d.overdue);
   const bdays = upcomingBirthdays(people, 21);
@@ -278,11 +337,14 @@ async function renderToday() {
     ${sec('Reach out', overdue.length, '', overdue.length ? 'red' : '')}
     ${overdue.length ? `<ul class="list card">${overdue.map((x) => personRow(x.p, st('red', x.d.label))).join('')}</ul>` : '<div class="card empty">Nobody overdue.</div>'}
     ${bdays.length ? `${sec('Birthdays · next 3 weeks', bdays.length)}<ul class="list card">${bdays.map((x) => personRow(x.p, st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`))).join('')}</ul>` : ''}
+    <div id="evSlot"></div>
+    ${todayEvs.length ? `${sec('Scheduled · today', todayEvs.length, '<a href="#/calendar">Calendar →</a>', 'amber')}${evList(todayEvs, '')}` : ''}
     ${sec('Open follow-ups', fus.length, '<a href="#/followups">All →</a>')}
     ${fuList(fus, 'All clear.')}
     ${upcoming.length ? `${sec('On cadence', upcoming.length)}<ul class="list card">${upcoming.map((x) => personRow(x.p, personStatus(x.p))).join('')}</ul>` : ''}
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
   bindFollowups(renderToday);
+  bindEvents(renderToday, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderToday));
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
 
@@ -354,7 +416,7 @@ async function renderPeople() {
 // ---------- calendar ----------
 async function renderCalendar() {
   setHead({ kicker: 'Schedule', title: 'Calendar', tab: 'calendar', add: true });
-  const [people, fus] = await Promise.all([loadPeople(), openFollowups()]);
+  const [people, fus, evs] = await Promise.all([loadPeople(), openFollowups(), loadEvents()]);
   const t = today();
   if (!state.cal) state.cal = { y: +t.slice(0, 4), m: +t.slice(5, 7) - 1, sel: t };
   const C = state.cal;
@@ -363,6 +425,7 @@ async function renderCalendar() {
   const buildEvents = () => {
     const ev = {}; const add = (d, e) => (ev[d] ||= []).push(e);
     fus.filter((f) => f.due_date).forEach((f) => add(f.due_date, { kind: 'fu', f, cls: f.due_date < t ? 'red' : f.due_date === t ? 'amber' : 'gray' }));
+    evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber' }));
     people.forEach((p) => {
       if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray' });
       if (p.cadence_days) {
@@ -385,33 +448,40 @@ async function renderCalendar() {
     while (cells.length % 7) cells.push('<div class="cal-day out"></div>');
     const items = (ev[C.sel] || []).sort((a, b) => ({ red: 0, amber: 1, gray: 2 }[a.cls] - { red: 0, amber: 1, gray: 2 }[b.cls]));
     const fuItems = items.filter((e) => e.kind === 'fu').map((e) => e.f);
-    const pItems = items.filter((e) => e.kind !== 'fu');
+    const evItems = items.filter((e) => e.kind === 'ev').map((e) => e.e);
+    const pItems = items.filter((e) => e.kind !== 'fu' && e.kind !== 'ev');
     const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     $view.innerHTML = `
       <div class="cal-bar"><span class="mo">${esc(monthName)}</span>
+        <button class="pill" id="calAddEv">+ Event</button>
         <button class="pill" id="calToday">Today</button>
         <button class="iconbtn" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
         <button class="iconbtn" id="calNext" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button></div>
+      <div id="evSlot"></div>
       <div class="cal"><div class="cal-dow">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => `<div>${x}</div>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></div>
       ${sec(new Date(C.sel + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), items.length)}
       ${!items.length ? '<div class="card empty">Nothing scheduled.</div>' : ''}
+      ${evItems.length ? `<div style="margin-bottom:${(pItems.length || fuItems.length) ? 8 : 0}px">${evList(evItems, '')}</div>` : ''}
       ${pItems.length ? `<ul class="list card">${pItems.map((e) => personRow(e.p, e.kind === 'bday' ? st(C.sel === t ? 'amber' : 'gray', 'Birthday') : st(e.cls, e.cls === 'red' ? dueInfo(e.p).label : 'Check-in due'))).join('')}</ul>` : ''}
-      ${fuItems.length ? `<div style="margin-top:${pItems.length ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}`;
+      ${fuItems.length ? `<div style="margin-top:${(pItems.length || evItems.length) ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}`;
     $view.querySelectorAll('[data-day]').forEach((b) => (b.onclick = () => { C.sel = b.dataset.day; draw(); }));
     document.getElementById('calPrev').onclick = () => { C.m -= 1; if (C.m < 0) { C.m = 11; C.y -= 1; } draw(); };
     document.getElementById('calNext').onclick = () => { C.m += 1; if (C.m > 11) { C.m = 0; C.y += 1; } draw(); };
     document.getElementById('calToday').onclick = () => { C.y = +t.slice(0, 4); C.m = +t.slice(5, 7) - 1; C.sel = t; draw(); };
+    document.getElementById('calAddEv').onclick = () => openEventForm(document.getElementById('evSlot'), { date: C.sel, people, onDone: renderCalendar });
     bindFollowups(renderCalendar);
+    bindEvents(renderCalendar, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderCalendar));
   };
   draw();
 }
 
 // ---------- person (panel) ----------
 async function renderPerson(id) {
-  const [p, fus, ints] = await Promise.all([
+  const [p, fus, ints, pevs] = await Promise.all([
     q(sb.from('people').select('*').eq('id', id).single()),
     q(sb.from('follow_ups').select('*').eq('person_id', id).order('status').order('created_at', { ascending: false })),
     q(sb.from('interactions').select('*').eq('person_id', id).order('happened_at', { ascending: false }).order('created_at', { ascending: false })),
+    q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').eq('person_id', id).gte('event_date', today()).order('event_date').order('event_time')),
   ]);
   panelHead({ kicker: [p.tier ? `Tier ${p.tier}` : 'No tier', ...(p.circles || [])].join(' · '), title: p.name,
     actions: `<a class="pill" href="#/p/${p.id}/edit">Edit</a>` });
@@ -435,12 +505,16 @@ async function renderPerson(id) {
     <div class="actions" style="margin-top:14px">
       <button class="btn primary" id="logBtn">Log interaction</button>
       <button class="btn" id="fuBtn">Add follow-up</button>
+      <button class="btn" id="evBtn">Add event</button>
     </div>
     <div id="formSlot"></div>
 
     ${sec('Follow-ups', open.length + parked.length)}
     <div class="card">${open.length || parked.length ? `<ul class="list">${[...open, ...parked].map((f) => fuItem({ ...f, person: null })).join('')}</ul>` : '<div class="empty">None open.</div>'}
       ${closed.length ? `<details class="more"><summary>${closed.length} done</summary><ul class="list">${closed.map((f) => fuItem({ ...f, person: null })).join('')}</ul></details>` : ''}</div>
+
+    ${sec('Upcoming events', pevs.length)}
+    ${evList(pevs, 'None scheduled.', true)}
 
     ${sec('History', ints.length)}
     <div class="card">${ints.length ? `<ul class="list">${ints.map((i) => `<li class="fu"><div class="main"><span class="t">${esc(i.summary)}</span>
@@ -452,6 +526,7 @@ async function renderPerson(id) {
 
   bindFollowups(() => renderPerson(id), root);
   const slot = document.getElementById('formSlot');
+  bindEvents(() => renderPerson(id), root, (eid) => editEvent(eid, slot, () => renderPerson(id)));
   document.getElementById('logBtn').onclick = () => {
     slot.innerHTML = `<form class="card form" id="lf" style="margin-top:12px">
       <div class="grid2"><div><label class="lbl">Type</label><select class="field" id="k">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select></div>
@@ -481,6 +556,10 @@ async function renderPerson(id) {
       toast('Added ✓'); renderPerson(id);
     };
     document.getElementById('ft').focus();
+  };
+  document.getElementById('evBtn').onclick = async () => {
+    const people = await loadPeople();
+    openEventForm(slot, { personId: id, people, onDone: () => renderPerson(id) });
   };
 }
 
