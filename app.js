@@ -271,7 +271,7 @@ async function renderToday() {
   $view.innerHTML = `
     <div class="stats">
       <a class="stat ${nOver ? 'red' : ''}" href="#/overdue"><span class="k">Overdue</span><span class="v">${nOver}</span></a>
-      <a class="stat" href="#/calendar"><span class="k">${todayFus ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${todayFus}</span></a>
+      <a class="stat ${todayFus ? 'amber' : ''}" href="#/calendar"><span class="k">${todayFus ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${todayFus}</span></a>
       <a class="stat" href="#/followups"><span class="k">Open</span><span class="v">${fus.length}</span></a>
       <a class="stat" href="#/calendar"><span class="k">Bdays · 21d</span><span class="v">${bdays.length}</span></a>
     </div>
@@ -595,8 +595,30 @@ sb.auth.onAuthStateChange((_evt, session) => {
   const was = !!state.session; state.session = session;
   if (!!session !== was) { state.people = null; route(); }
 });
-const { data } = await sb.auth.getSession();
-state.session = data.session;
-route();
+// Boot guard: the app must never sit on "Loading…" forever. If the first
+// render doesn't finish (stalled network, blocked third-party request,
+// hung session restore), show a recovery screen with a retry instead.
+function bootFail() {
+  setHead({ kicker: 'Network', title: 'Couldn\u2019t start' });
+  $view.innerHTML = `<div class="login">
+    <p><b style="color:var(--text)">The app didn\u2019t finish starting.</b></p>
+    <p>This is usually a slow or blocked connection. Make sure you\u2019re online and nothing is blocking this site, then try again.</p>
+    <button class="btn primary" id="bootRetry">Retry</button></div>`;
+  document.getElementById('bootRetry').onclick = () => location.reload();
+}
+let bootDone = false;
+const bootTimer = setTimeout(() => {
+  if (!bootDone) { console.error('[boot] timed out — first render never completed'); bootFail(); }
+}, 15000);
+try {
+  const { data } = await sb.auth.getSession();
+  state.session = data.session;
+  await route();
+} catch (e) {
+  console.error('[boot]', e);
+  bootFail();
+} finally {
+  bootDone = true; clearTimeout(bootTimer);
+}
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
