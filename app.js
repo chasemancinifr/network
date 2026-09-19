@@ -380,6 +380,25 @@ async function renderFollowups() {
   bindFollowups(renderFollowups);
 }
 
+// ---------- events ----------
+async function renderEvents() {
+  setHead({ kicker: 'Scheduled', title: 'Events', tab: 'events', add: true });
+  const [people, evs] = await Promise.all([loadPeople(), loadEvents()]);
+  const t = today();
+  const upcoming = evs.filter((e) => e.event_date >= t);
+  const past = evs.filter((e) => e.event_date < t).reverse();
+  $view.innerHTML = `
+    <div class="cal-bar"><span class="mo">${upcoming.length} upcoming</span>
+      <button class="pill" id="evAddBtn">+ Event</button></div>
+    <div id="evSlot"></div>
+    ${sec('Upcoming', upcoming.length, '', upcoming.length ? 'amber' : '')}
+    ${evList(upcoming, 'No upcoming events.', true)}
+    ${past.length ? `${sec('Past', past.length)}<div class="past">${evList(past, '', true)}</div>` : ''}`;
+  const slot = document.getElementById('evSlot');
+  document.getElementById('evAddBtn').onclick = () => openEventForm(slot, { people, onDone: renderEvents });
+  bindEvents(renderEvents, $view, (id) => editEvent(id, slot, renderEvents));
+}
+
 // ---------- people ----------
 async function renderPeople() {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
@@ -640,7 +659,7 @@ function renderPassword() {
 }
 
 // ---------- router ----------
-const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/calendar': renderCalendar };
+const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/events': renderEvents, '#/calendar': renderCalendar };
 function panelRoute(h) {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return () => renderEdit(m[1]);
