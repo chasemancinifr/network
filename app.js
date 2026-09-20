@@ -455,9 +455,12 @@ async function renderEvents() {
     <div class="cal-bar"><span class="mo">${upcoming.length} upcoming</span>
       <button class="pill" id="evAddBtn">+ Event</button></div>
     <div id="evSlot"></div>
-    ${sec('Upcoming', upcoming.length, '', upcoming.length ? 'amber' : '')}
-    ${evList(upcoming, 'No upcoming events.', true)}
-    ${past.length ? `${sec('Past', past.length)}<div class="past">${evList(past, '', true)}</div>` : ''}`;
+    <div class="events-wrap"><div>
+      ${sec('Upcoming', upcoming.length, '', upcoming.length ? 'amber' : '')}
+      ${evList(upcoming, 'No upcoming events.', true)}
+    </div><div>
+      ${past.length ? `${sec('Past', past.length)}<div class="past">${evList(past, '', true)}</div>` : ''}
+    </div></div>`;
   const slot = document.getElementById('evSlot');
   document.getElementById('evAddBtn').onclick = () => openEventForm(slot, { people, onDone: renderEvents });
   bindEvents(renderEvents, $view, (id) => editEvent(id, slot, renderEvents));
@@ -510,9 +513,9 @@ async function renderRecent() {
     const g = groups[groups.length - 1];
     if (g && g.d === d) g.items.push(it); else groups.push({ d, items: [it] });
   });
-  $view.innerHTML = groups.length ? groups.map((g) => `
-    <div class="daydiv">${g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
-    <div class="card"><ul class="list">${g.items.map(actItem).join('')}</ul></div>`).join('')
+  $view.innerHTML = groups.length ? `<div class="recent-wrap">${groups.map((g) => `
+    <div class="daygroup"><div class="daydiv">${g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
+    <div class="card"><ul class="list">${g.items.map(actItem).join('')}</ul></div></div>`).join('')}</div>`
     : '<div class="card empty">No activity yet.</div>';
 }
 
@@ -524,11 +527,13 @@ async function renderPeople() {
   const circles = [...new Set(people.flatMap((p) => p.circles || []))].sort();
   const F = state.peopleFilter;
   $view.innerHTML = `
-    <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
-    <div class="pills">${TIERS.map((t) => `<button class="pill ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}">Tier ${t}</button>`).join('')}</div>
-    <div class="pills">${circles.map((c) => `<button class="pill ${F.circle === c ? 'on' : ''}" data-circle="${esc(c)}">${esc(c)}</button>`).join('')}</div>
-    <div id="count" class="count"></div>
-    <ul class="list card" id="plist"></ul>`;
+    <div class="people-wrap"><div class="people-side">
+      <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
+      <div class="pills">${TIERS.map((t) => `<button class="pill ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}">Tier ${t}</button>`).join('')}</div>
+      <div class="pills">${circles.map((c) => `<button class="pill ${F.circle === c ? 'on' : ''}" data-circle="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div id="count" class="count"></div>
+    </div>
+    <ul class="list card" id="plist"></ul></div>`;
   const draw = () => {
     const needle = F.q.trim().toLowerCase();
     const rows = people.filter((p) =>

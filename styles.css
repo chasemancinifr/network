@@ -94,6 +94,15 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .pulse-row span { color: var(--muted); }
 .pulse-row b { font: 600 15px var(--mono); }
 
+/* ---------- two-column pages: stacked on mobile, side-by-side on desktop ---------- */
+@media (min-width: 900px) {
+  .people-wrap { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0 28px; align-items: start; }
+  .people-side { position: sticky; top: 16px; }
+  .events-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; align-items: start; }
+  .recent-wrap { columns: 2; column-gap: 28px; }
+  .daygroup { break-inside: avoid; }
+}
+
 /* ---------- section headers ---------- */
 .sec { display: flex; align-items: center; gap: 10px; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 24px 0 8px; }
 .sec::after { content: ""; flex: 1; height: 1px; background: var(--line); order: 1; }
