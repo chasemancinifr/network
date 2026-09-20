@@ -529,7 +529,7 @@ async function renderPeople() {
   $view.innerHTML = `
     <div class="people-wrap"><div class="people-side">
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
-      <div class="pills">${TIERS.map((t) => `<button class="pill ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}">Tier ${t}</button>`).join('')}</div>
+      <div class="pills">${TIERS.map((t) => `<button class="pill ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}">Tier ${t}</button>`).join('')}<button class="pill ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none">Unassigned</button></div>
       <div class="pills">${circles.map((c) => `<button class="pill ${F.circle === c ? 'on' : ''}" data-circle="${esc(c)}">${esc(c)}</button>`).join('')}</div>
       <div id="count" class="count"></div>
     </div>
@@ -537,7 +537,7 @@ async function renderPeople() {
   const draw = () => {
     const needle = F.q.trim().toLowerCase();
     const rows = people.filter((p) =>
-      (!F.tiers.size || F.tiers.has(p.tier)) && (!F.circle || (p.circles || []).includes(F.circle)) &&
+      (!F.tiers.size || F.tiers.has(p.tier) || (F.tiers.has('__none') && !p.tier)) && (!F.circle || (p.circles || []).includes(F.circle)) &&
       (!needle || [p.name, ...(p.aliases || []), p.role, p.dept, p.relationship].some((s) => (s || '').toLowerCase().includes(needle))));
     document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p))).join('') : '<li class="empty">No matches.</li>';
     document.getElementById('count').textContent = rows.length === people.length ? `${people.length} records` : `${rows.length} of ${people.length}`;
