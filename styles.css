@@ -77,8 +77,22 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .nav a.on { background: var(--surface-2); }
   .nav a.on::before { top: 8px; bottom: 8px; left: 0; right: auto; width: 2px; height: auto; }
   .nav a:hover { color: var(--text); }
-  .app:has(.nav:not([hidden])) .shell { margin-left: max(208px, calc(50% - 380px + 104px)); padding-bottom: 48px; }
+  .app:has(.nav:not([hidden])) .shell { margin-left: max(208px, calc(50% - 560px + 104px)); max-width: 1120px; padding-bottom: 48px; }
 }
+
+/* ---------- dashboard (Today): single column on mobile, two columns on desktop ---------- */
+.dash { display: grid; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) {
+  .dash { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0 32px; align-items: start; }
+}
+/* ---------- network pulse ---------- */
+.pulse { padding: 6px 14px 12px; }
+.pulse-tiers { display: grid; grid-template-columns: repeat(4, 1fr); padding: 8px 0 10px; border-bottom: 1px solid var(--line); }
+.pulse-tiers span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 9.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); font-family: var(--mono); }
+.pulse-tiers b { font: 600 20px/1.1 var(--mono); color: var(--text); }
+.pulse-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0 0; font-size: 14px; }
+.pulse-row span { color: var(--muted); }
+.pulse-row b { font: 600 15px var(--mono); }
 
 /* ---------- section headers ---------- */
 .sec { display: flex; align-items: center; gap: 10px; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); margin: 24px 0 8px; }

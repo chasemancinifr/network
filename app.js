@@ -135,7 +135,7 @@ applyTheme(getTheme());
 async function loadPeople(force) {
   if (state.people && !force) return state.people;
   state.people = await q(sb.from('people')
-    .select('id,name,aliases,tier,circles,relationship,org,dept,role,last_contact,cadence_days,birth_month,birth_day,birth_year')
+    .select('id,name,aliases,tier,circles,relationship,org,dept,role,last_contact,cadence_days,birth_month,birth_day,birth_year,created_at')
     .is('archived_at', null).order('name'));
   return state.people;
 }
@@ -346,18 +346,37 @@ function upcomingBirthdays(people, days) {
   }).filter((x) => x.in <= days).sort((a, b) => a.in - b.in);
 }
 
-// ---------- today ----------
+// ---------- today = the dashboard (same widgets everywhere; two columns on desktop) ----------
 async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
-  const [people, fus, evs] = await Promise.all([loadPeople(), openFollowups(), loadEvents()]);
+  const [people, fus, evs, ints] = await Promise.all([loadPeople(), openFollowups(), loadEvents(),
+    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(today(), -7)))]);
   const t = today();
-  const todayEvs = evs.filter((e) => e.event_date === t);
+  const week = addDays(t, 7);
   const overdue = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const upcoming = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && !x.d.overdue);
   const bdays = upcomingBirthdays(people, 21);
-  const lateFus = fus.filter((f) => f.due_date && f.due_date < t).length;
-  const todayFus = fus.filter((f) => f.due_date === t).length;
-  const nOver = overdue.length + lateFus;
+  const lateFus = fus.filter((f) => f.due_date && f.due_date < t);
+  const todayFus = fus.filter((f) => f.due_date === t);
+  const weekFus = fus.filter((f) => f.due_date && f.due_date > t && f.due_date <= week);
+  const nOver = overdue.length + lateFus.length;
+
+  // attention queue: overdue people + overdue follow-ups, most overdue first
+  const attn = [
+    ...overdue.map((x) => ({ days: -x.d.left, html: personRow(x.p, st('red', x.d.label)) })),
+    ...lateFus.map((f) => ({ days: daysBetween(f.due_date, t), html: fuItem(f) })),
+  ].sort((a, b) => b.days - a.days);
+
+  // this week: today through the next 7 days
+  const weekEvs = evs.filter((e) => e.event_date >= t && e.event_date <= week);
+
+  // going stale: no cadence, last real contact 60+ days ago
+  const stale = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 60)
+    .sort((a, b) => daysBetween(b.last_contact, t) - daysBetween(a.last_contact, t)).slice(0, 8);
+
+  // network pulse
+  const tierN = (tr) => people.filter((p) => p.tier === tr).length;
+  const newThisMonth = people.filter((p) => p.created_at && p.created_at.slice(0, 7) === t.slice(0, 7)).length;
 
   $view.innerHTML = `
     <div class="stats">
@@ -366,14 +385,27 @@ async function renderToday() {
       <a class="stat" href="#/followups"><span class="k">Open</span><span class="v">${fus.length}</span></a>
       <a class="stat" href="#/calendar"><span class="k">Bdays · 21d</span><span class="v">${bdays.length}</span></a>
     </div>
-    ${sec('Reach out', overdue.length, '', overdue.length ? 'red' : '')}
-    ${overdue.length ? `<ul class="list card">${overdue.map((x) => personRow(x.p, st('red', x.d.label))).join('')}</ul>` : '<div class="card empty">Nobody overdue.</div>'}
-    ${bdays.length ? `${sec('Birthdays · next 3 weeks', bdays.length)}<ul class="list card">${bdays.map((x) => personRow(x.p, st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`))).join('')}</ul>` : ''}
-    <div id="evSlot"></div>
-    ${todayEvs.length ? `${sec('Scheduled · today', todayEvs.length, '<a href="#/calendar">Calendar →</a>', 'amber')}${evList(todayEvs, '')}` : ''}
-    ${sec('Open follow-ups', fus.length, '<a href="#/followups">All →</a>')}
-    ${fuList(fus, 'All clear.')}
-    ${upcoming.length ? `${sec('On cadence', upcoming.length)}<ul class="list card">${upcoming.map((x) => personRow(x.p, personStatus(x.p))).join('')}</ul>` : ''}
+    <div class="dash"><div class="dash-main">
+      ${sec('Needs attention', attn.length, '', attn.length ? 'red' : '')}
+      ${attn.length ? `<ul class="list card">${attn.map((a) => a.html).join('')}</ul>` : '<div class="card empty">All clear.</div>'}
+      ${(weekEvs.length || weekFus.length) ? `${sec('This week', weekEvs.length + weekFus.length, '<a href="#/calendar">Calendar →</a>', 'amber')}
+      <div id="evSlot"></div>
+      ${weekEvs.length ? evList(weekEvs, '', true) : ''}
+      ${weekFus.length ? `<div style="margin-top:8px">${fuList(weekFus, '')}</div>` : ''}` : '<div id="evSlot"></div>'}
+      ${sec('Open follow-ups', fus.length, '<a href="#/followups">All →</a>')}
+      ${fuList(fus, 'All clear.')}
+      ${upcoming.length ? `${sec('On cadence', upcoming.length)}<ul class="list card">${upcoming.map((x) => personRow(x.p, personStatus(x.p))).join('')}</ul>` : ''}
+    </div><div class="dash-side">
+      ${bdays.length ? `${sec('Birthdays · next 3 weeks', bdays.length)}<ul class="list card">${bdays.map((x) => personRow(x.p, st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`))).join('')}</ul>` : ''}
+      ${stale.length ? `${sec('Going stale', stale.length)}<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)))).join('')}</ul>` : ''}
+      ${sec('Network pulse')}
+      <div class="card pulse">
+        <div class="pulse-tiers">${TIERS.map((tr) => `<span><b>${tierN(tr)}</b>Tier ${tr}</span>`).join('')}</div>
+        <div class="pulse-row"><span>People</span><b>${people.length}</b></div>
+        <div class="pulse-row"><span>New this month</span><b>${newThisMonth}</b></div>
+        <div class="pulse-row"><span>Conversations · 7 days</span><b>${ints.length}</b></div>
+      </div>
+    </div></div>
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
   bindFollowups(renderToday);
   bindEvents(renderToday, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderToday));
