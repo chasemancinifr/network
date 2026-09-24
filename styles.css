@@ -83,6 +83,27 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .nav a:hover { color: var(--text); }
   .app:has(.nav:not([hidden])) .shell { margin-left: max(208px, calc(50% - 560px + 104px)); max-width: 1120px; padding-bottom: 48px; }
 }
+/* nine tabs: let the mobile bar scroll sideways instead of crushing labels */
+@media (max-width: 899px) {
+  .nav { overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav a { flex: 1 0 58px; }
+}
+
+/* ---------- people filters: labeled checkbox groups ---------- */
+.fgroup { margin-top: 14px; }
+.flabel { display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; padding: 0 8px; }
+.mini { background: none; border: 0; padding: 2px 0; color: var(--muted); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.mini:hover { color: var(--text); }
+.checklist { display: flex; flex-direction: column; gap: 1px; }
+.chk { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; background: none; border: 0; border-radius: 8px; color: var(--text); font-size: 13.5px; text-align: left; cursor: pointer; }
+.chk:hover { background: var(--surface-2); }
+.chk .box { width: 15px; height: 15px; flex: none; border: 1.5px solid var(--muted); border-radius: 4px; display: grid; place-items: center; font-size: 10px; line-height: 1; color: var(--on-amber); }
+.chk.on .box { background: var(--amber); border-color: var(--amber); }
+.chk.on .box::after { content: "✓"; }
+.chk .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chk .n { margin-left: auto; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+.chk.on .n { color: var(--amber); }
 
 /* ---------- dashboard (Today): single column on mobile, two columns on desktop ---------- */
 .dash { display: grid; grid-template-columns: minmax(0, 1fr); }
@@ -244,6 +265,7 @@ details.more .notes { padding-top: 0; }
 
 /* ---------- calendar ---------- */
 .cal-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.cal-bar .pills { flex: 1; }
 .past .fu { opacity: .55; }
 .daydiv { font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 16px 2px 8px; }
 .daydiv:first-child { margin-top: 2px; }

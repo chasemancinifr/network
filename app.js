@@ -21,8 +21,8 @@ const $pTitle = document.getElementById('pTitle');
 const $pActions = document.getElementById('pActions');
 const $themeBtn = document.getElementById('themeBtn');
 
-const state = { people: null, session: null, peopleFilter: { q: '', tiers: new Set(), circle: null }, fuTab: 'open',
-  base: '#/today', baseRendered: false, cal: null };
+const state = { people: null, session: null, peopleFilter: { q: '', tiers: new Set(), circles: new Set() }, fuTab: 'open', taskTab: 'open',
+  intKind: 'all', intQ: '', base: '#/today', baseRendered: false, cal: null };
 
 // ---------- helpers ----------
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -263,6 +263,69 @@ function bindFollowups(rerender, root = $view) {
 }
 const fuList = (fus, empty) => `<div class="card">${fus.length ? `<ul class="list">${fus.map(fuItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
 
+// ---------- task rows (shared) ----------
+// Tasks are general to-dos; follow-ups stay person-centric nudges. A task may
+// link a person and may carry a due date — neither is required.
+const openTasks = () => q(sb.from('tasks').select('id,title,detail,due_date,status,created_at,completed_at,person:people(id,name,tier)').eq('status', 'open')
+  .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));
+// raw (no toast) variant for pages that merely fold tasks in — the table may
+// not exist yet if the 0002 migration hasn't been run
+const openTasksSoft = async () => {
+  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,person:people(id,name,tier)').eq('status', 'open');
+  return error ? [] : (data || []);
+};
+const personTasks = async (id) => {
+  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,created_at,completed_at').eq('person_id', id).eq('status', 'open')
+    .order('due_date', { ascending: true, nullsFirst: false });
+  return error ? [] : (data || []);
+};
+function taskStatus(t) {
+  const d = today();
+  if (t.status === 'done') return st('ring', t.completed_at ? `Done ${monoDate(t.completed_at)}` : 'Done');
+  if (!t.due_date) return st('ring', 'Open');
+  if (t.due_date < d) return st('red', `Overdue · ${monoDate(t.due_date)}`);
+  if (t.due_date === d) return st('amber', 'Today');
+  return st('gray', monoDate(t.due_date));
+}
+function taskItem(t) {
+  const who = t.person ? `<a href="#/p/${t.person.id}">${esc(t.person.name)}</a>` : '';
+  const ctl = t.status === 'open'
+    ? `<button class="check" data-task-done="${t.id}" aria-label="Mark done" title="Mark done"></button>`
+    : `<button class="btn small" data-task-reopen="${t.id}">Reopen</button>`;
+  return `<li class="fu ${t.status}">${ctl}<div class="main"><button class="t tlink" data-task-edit="${t.id}">${esc(t.title)}</button><span class="meta">${taskStatus(t)}${who ? `<span>${who}</span>` : ''}</span></div></li>`;
+}
+function bindTasks(rerender, root = $view) {
+  root.querySelectorAll('[data-task-done]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true; await q(sb.from('tasks').update({ status: 'done', completed_at: new Date().toISOString() }).eq('id', b.dataset.taskDone));
+    toast('Done ✓'); rerender();
+  }));
+  root.querySelectorAll('[data-task-reopen]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true; await q(sb.from('tasks').update({ status: 'open', completed_at: null }).eq('id', b.dataset.taskReopen)); toast('Reopened'); rerender();
+  }));
+  root.querySelectorAll('[data-task-edit]').forEach((b) => (b.onclick = () => editTask(b.dataset.taskEdit, rerender)));
+}
+const taskList = (tasks, empty) => `<div class="card">${tasks.length ? `<ul class="list">${tasks.map(taskItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+// shared add-task form; renders into `slot`, calls onDone after save
+async function openTaskForm(slot, { personId = null, date = '', people, onDone }) {
+  slot.innerHTML = `<form class="card form" id="tkf" style="margin-top:12px">
+    <label class="lbl">Task</label><input class="field" id="tkt" required placeholder="What needs doing" maxlength="140">
+    <div class="grid2">
+      <div><label class="lbl">Due (optional)</label><input class="field" type="date" id="tkd" value="${esc(date)}"></div>
+      <div><label class="lbl">Person (optional)</label><select class="field" id="tkp"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${String(personId ?? '') === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+    </div>
+    <label class="lbl">Detail (optional)</label><textarea class="field" id="tkn" style="min-height:70px"></textarea>
+    <div class="actions" style="margin-top:14px"><button class="btn primary">Add task</button><button type="button" class="btn" id="tkx">Cancel</button></div></form>`;
+  document.getElementById('tkx').onclick = () => (slot.innerHTML = '');
+  document.getElementById('tkf').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const row = { title: document.getElementById('tkt').value.trim(), due_date: document.getElementById('tkd').value || null,
+      person_id: document.getElementById('tkp').value || null, detail: document.getElementById('tkn').value.trim() || null };
+    try { await q(sb.from('tasks').insert(row)); toast('Task added ✓'); slot.innerHTML = ''; onDone(); }
+    catch { e.submitter && (e.submitter.disabled = false); }
+  };
+  document.getElementById('tkt').focus();
+}
+
 // ---------- edit follow-up (panel) ----------
 async function editFollowup(fuId, rerender) {
   const f = await q(sb.from('follow_ups').select('id,title,detail,due_date,status,person_id').eq('id', fuId).single());
@@ -292,6 +355,36 @@ async function editFollowup(fuId, rerender) {
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('fe_title').focus();
+}
+// ---------- edit task (panel) ----------
+async function editTask(taskId, rerender) {
+  const t = await q(sb.from('tasks').select('id,title,detail,due_date,status,person_id').eq('id', taskId).single());
+  if (!t) return;
+  const people = await loadPeople();
+  openPanel();
+  const who = people.find((p) => p.id === t.person_id);
+  panelHead({ kicker: who ? who.name : 'Task', title: 'Edit task' });
+  const root = $pBody;
+  root.innerHTML = `<form class="card form" id="tef">
+    <label class="lbl" for="te_title">Title</label><input class="field" id="te_title" required value="${esc(t.title)}">
+    <div class="grid2"><div><label class="lbl" for="te_due">Due date</label><input class="field" id="te_due" type="date" value="${esc(t.due_date || '')}"></div>
+    <div><label class="lbl" for="te_person">Person (optional)</label><select class="field" id="te_person"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${p.id === t.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
+    <label class="lbl" for="te_detail">Detail (optional)</label><textarea class="field" id="te_detail" style="min-height:90px">${esc(t.detail || '')}</textarea>
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
+  document.getElementById('te_cancel').onclick = () => dismissPanel();
+  document.getElementById('te_del').onclick = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
+    b.disabled = true; await q(sb.from('tasks').delete().eq('id', taskId)); toast('Deleted'); closePanel(); rerender();
+  };
+  document.getElementById('tef').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const row = { title: document.getElementById('te_title').value.trim(), detail: document.getElementById('te_detail').value.trim() || null,
+      due_date: document.getElementById('te_due').value || null, person_id: document.getElementById('te_person').value || null };
+    try { await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓'); closePanel(); rerender(); }
+    catch { e.submitter && (e.submitter.disabled = false); }
+  };
+  document.getElementById('te_title').focus();
 }
 // ---------- scheduled-event rows (shared) ----------
 function evItem(e, showDate = false) {
@@ -354,7 +447,7 @@ function upcomingBirthdays(people, days) {
 // ---------- today = the dashboard (same widgets everywhere; two columns on desktop) ----------
 async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
-  const [people, fus, evs, ints, intsMonth] = await Promise.all([loadPeople(), openFollowups(), loadEvents(),
+  const [people, fus, evs, tasks, ints, intsMonth] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft(),
     q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(today(), -7))),
     q(sb.from('interactions').select('id').gte('happened_at', today().slice(0, 8) + '01'))]);
   const t = today();
@@ -365,12 +458,17 @@ async function renderToday() {
   const lateFus = fus.filter((f) => f.due_date && f.due_date < t);
   const todayFus = fus.filter((f) => f.due_date === t);
   const weekFus = fus.filter((f) => f.due_date && f.due_date > t && f.due_date <= week);
-  const nOver = overdue.length + lateFus.length;
+  const lateTasks = tasks.filter((x) => x.due_date && x.due_date < t);
+  const todayTasks = tasks.filter((x) => x.due_date === t);
+  const weekTasks = tasks.filter((x) => x.due_date && x.due_date > t && x.due_date <= week);
+  const nDueToday = todayFus.length + todayTasks.length;
+  const nOver = overdue.length + lateFus.length + lateTasks.length;
 
   // attention queue: overdue people + overdue follow-ups, most overdue first
   const attn = [
     ...overdue.map((x) => ({ days: -x.d.left, html: personRow(x.p, st('red', x.d.label)) })),
     ...lateFus.map((f) => ({ days: daysBetween(f.due_date, t), html: fuItem(f) })),
+    ...lateTasks.map((x) => ({ days: daysBetween(x.due_date, t), html: taskItem(x) })),
   ].sort((a, b) => b.days - a.days);
 
   // this week: today through the next 7 days
@@ -387,17 +485,18 @@ async function renderToday() {
   $view.innerHTML = `
     <div class="stats">
       <a class="stat ${nOver ? 'red' : ''}" href="#/overdue"><span class="k">Overdue</span><span class="v">${nOver}</span></a>
-      <a class="stat ${todayFus.length ? 'amber' : ''}" href="#/calendar"><span class="k">${todayFus.length ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${todayFus.length}</span></a>
+      <a class="stat ${nDueToday ? 'amber' : ''}" href="#/calendar"><span class="k">${nDueToday ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${nDueToday}</span></a>
       <a class="stat" href="#/followups"><span class="k">Open</span><span class="v">${fus.length}</span></a>
       <a class="stat" href="#/calendar"><span class="k">Bdays · 21d</span><span class="v">${bdays.length}</span></a>
     </div>
     <div class="dash"><div class="dash-main">
       ${sec('Needs attention', attn.length, '', attn.length ? 'red' : '')}
       ${attn.length ? `<ul class="list card">${attn.map((a) => a.html).join('')}</ul>` : '<div class="card empty">All clear.</div>'}
-      ${(weekEvs.length || weekFus.length) ? `${sec('This week', weekEvs.length + weekFus.length, '<a href="#/calendar">Calendar →</a>', 'amber')}
+      ${(weekEvs.length || weekFus.length || weekTasks.length) ? `${sec('This week', weekEvs.length + weekFus.length + weekTasks.length, '<a href="#/calendar">Calendar →</a>', 'amber')}
       <div id="evSlot"></div>
       ${weekEvs.length ? evList(weekEvs, '', true) : ''}
-      ${weekFus.length ? `<div style="margin-top:8px">${fuList(weekFus, '')}</div>` : ''}` : '<div id="evSlot"></div>'}
+      ${weekFus.length ? `<div style="margin-top:8px">${fuList(weekFus, '')}</div>` : ''}
+      ${weekTasks.length ? `<div style="margin-top:8px">${taskList(weekTasks, '')}</div>` : ''}` : '<div id="evSlot"></div>'}
       ${sec('Open follow-ups', fus.length, '<a href="#/followups">All →</a>')}
       ${fuList(fus, 'All clear.')}
       ${upcoming.length ? `${sec('On cadence', upcoming.length)}<ul class="list card">${upcoming.map((x) => personRow(x.p, personStatus(x.p))).join('')}</ul>` : ''}
@@ -415,6 +514,7 @@ async function renderToday() {
     </div></div>
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
   bindFollowups(renderToday);
+  bindTasks(renderToday);
   bindEvents(renderToday, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderToday));
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
@@ -422,17 +522,21 @@ async function renderToday() {
 // ---------- overdue ----------
 async function renderOverdue() {
   setHead({ kicker: 'Attention', title: 'Overdue', tab: 'overdue', add: true });
-  const [people, fus] = await Promise.all([loadPeople(), openFollowups()]);
+  const [people, fus, tasks] = await Promise.all([loadPeople(), openFollowups(), openTasksSoft()]);
   const t = today();
   const people_ = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const late = fus.filter((f) => f.due_date && f.due_date < t);
-  $kicker.textContent = `Attention · ${people_.length + late.length} items`;
+  const lateTasks = tasks.filter((x) => x.due_date && x.due_date < t);
+  $kicker.textContent = `Attention · ${people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
     ${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
     ${people_.length ? `<ul class="list card">${people_.map((x) => personRow(x.p, st('red', x.d.label))).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}
     ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
-    ${fuList(late, 'No follow-ups past their due date.')}`;
+    ${fuList(late, 'No follow-ups past their due date.')}
+    ${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
+    ${taskList(lateTasks, 'No tasks past their due date.')}`;
   bindFollowups(renderOverdue);
+  bindTasks(renderOverdue);
 }
 
 // ---------- follow-ups (scheduled) ----------
@@ -449,6 +553,52 @@ async function renderFollowups() {
     ${fuList(fus, 'Nothing here.')}`;
   $view.querySelectorAll('[data-seg]').forEach((b) => (b.onclick = () => { state.fuTab = b.dataset.seg; renderFollowups(); }));
   bindFollowups(renderFollowups);
+}
+
+// ---------- tasks (general to-dos; follow-ups stay separate) ----------
+async function renderTasks() {
+  setHead({ kicker: 'Action items', title: 'Tasks', tab: 'tasks', add: true });
+  const s = state.taskTab;
+  let tasks;
+  try {
+    let qq = sb.from('tasks').select('id,title,detail,due_date,status,created_at,completed_at,person:people(id,name,tier)').eq('status', s);
+    qq = s === 'done' ? qq.order('completed_at', { ascending: false, nullsFirst: false }).limit(100)
+      : qq.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
+    tasks = await q(qq);
+  } catch (e) {
+    if (/could not find the table|relation .* does not exist/i.test(e.message || '')) {
+      $view.innerHTML = `<div class="card"><div class="empty">Tasks needs a one-time setup.<br><br>Run <span class="mono">supabase/migrations/0002_create_tasks.sql</span> in Supabase → SQL Editor, then reload.</div></div>`;
+      return;
+    }
+    throw e;
+  }
+  const people = await loadPeople();
+  const t = today();
+  if (s === 'done') {
+    $view.innerHTML = `
+      <div class="cal-bar"><div class="pills" role="tablist">${['open', 'done'].map((k) => `<button class="pill ${k === s ? 'on' : ''}" data-seg="${k}" role="tab" aria-selected="${k === s}">${k}</button>`).join('')}</div>
+        <button class="pill" id="taskAddBtn">+ Task</button></div>
+      <div id="taskSlot"></div>
+      ${sec('Completed', tasks.length)}${taskList(tasks, 'Nothing completed yet.')}`;
+  } else {
+    const late = tasks.filter((x) => x.due_date && x.due_date < t);
+    const todayT = tasks.filter((x) => x.due_date === t);
+    const upcoming = tasks.filter((x) => x.due_date && x.due_date > t);
+    const nodate = tasks.filter((x) => !x.due_date);
+    $view.innerHTML = `
+      <div class="cal-bar"><div class="pills" role="tablist">${['open', 'done'].map((k) => `<button class="pill ${k === s ? 'on' : ''}" data-seg="${k}" role="tab" aria-selected="${k === s}">${k}</button>`).join('')}</div>
+        <button class="pill" id="taskAddBtn">+ Task</button></div>
+      <div id="taskSlot"></div>
+      ${late.length ? `${sec('Overdue', late.length, '', 'red')}${taskList(late, '')}` : ''}
+      ${sec('Today', todayT.length, '', todayT.length ? 'amber' : '')}${todayT.length ? taskList(todayT, '') : ''}
+      ${sec('Upcoming', upcoming.length)}${upcoming.length ? taskList(upcoming, '') : ''}
+      ${sec('No due date', nodate.length)}${nodate.length ? taskList(nodate, '') : ''}
+      ${!tasks.length ? '<div class="card empty">No open tasks. Enjoy the clear.</div>' : ''}`;
+  }
+  const slot = document.getElementById('taskSlot');
+  document.getElementById('taskAddBtn').onclick = () => openTaskForm(slot, { people, onDone: renderTasks });
+  $view.querySelectorAll('[data-seg]').forEach((b) => (b.onclick = () => { state.taskTab = b.dataset.seg; renderTasks(); }));
+  bindTasks(renderTasks);
 }
 
 // ---------- events ----------
@@ -526,37 +676,125 @@ async function renderRecent() {
     : '<div class="card empty">No activity yet.</div>';
 }
 
+// ---------- interactions ----------
+async function renderInteractions() {
+  setHead({ kicker: 'Conversations', title: 'Interactions', tab: 'interactions', add: true });
+  const [ints, people] = await Promise.all([
+    q(sb.from('interactions').select('id,kind,happened_at,summary,duration_min,person:people(id,name,tier)').order('happened_at', { ascending: false }).order('created_at', { ascending: false }).limit(500)),
+    loadPeople(),
+  ]);
+  const t = today();
+  const inLast = (n) => ints.filter((i) => i.happened_at && i.happened_at >= addDays(t, -n)).length;
+  const kindN = (k) => ints.filter((i) => i.kind === k).length;
+  $view.innerHTML = `
+    <div class="stats">
+      <span class="stat"><span class="k">All time</span><span class="v">${ints.length}</span></span>
+      <span class="stat"><span class="k">Last 7 days</span><span class="v">${inLast(7)}</span></span>
+      <span class="stat"><span class="k">Last 30 days</span><span class="v">${inLast(30)}</span></span>
+      <span class="stat"><span class="k">With notes</span><span class="v">${ints.filter((i) => i.summary).length}</span></span>
+    </div>
+    <div class="cal-bar"><div class="pills" role="tablist">
+      ${['all', ...KINDS].map((k) => `<button class="pill ${k === state.intKind ? 'on' : ''}" data-kind="${k}" role="tab" aria-selected="${k === state.intKind}">${k === 'all' ? 'All' : `${k} · ${kindN(k)}`}</button>`).join('')}</div>
+      <button class="pill" id="intAddBtn">+ Log</button></div>
+    <div id="intSlot"></div>
+    <input class="search" id="intQ" type="search" placeholder="Search person or summary…" value="${esc(state.intQ)}" autocomplete="off" style="margin-bottom:12px">
+    <div id="intList"></div>`;
+  const draw = () => {
+    const K = state.intKind, Q = state.intQ.trim().toLowerCase();
+    const rows = ints.filter((i) => (K === 'all' || i.kind === K) &&
+      (!Q || (i.person?.name || '').toLowerCase().includes(Q) || (i.summary || '').toLowerCase().includes(Q)));
+    const groups = [];
+    rows.forEach((i) => {
+      const d = (i.happened_at || '').slice(0, 10);
+      const g = groups[groups.length - 1];
+      if (g && g.d === d) g.items.push(i); else groups.push({ d, items: [i] });
+    });
+    document.getElementById('intList').innerHTML = groups.length ? `<div class="recent-wrap">${groups.map((g) => `
+      <div class="daygroup"><div class="daydiv">${!g.d ? 'Undated' : g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
+      <div class="card"><ul class="list">${g.items.map((i) => {
+        const who = i.person ? `<a href="#/p/${i.person.id}">${esc(i.person.name)}</a>` : '<span class="meta">No person linked</span>';
+        return `<li class="fu"><div class="main"><span class="t">${who}</span><span class="meta">${st('amber', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div></li>`;
+      }).join('')}</ul></div></div>`).join('')}</div>`
+      : '<div class="card empty">No interactions match.</div>';
+  };
+  const qi = document.getElementById('intQ');
+  qi.oninput = () => { state.intQ = qi.value; draw(); };
+  $view.querySelectorAll('[data-kind]').forEach((b) => (b.onclick = () => {
+    state.intKind = b.dataset.kind;
+    $view.querySelectorAll('[data-kind]').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
+    draw();
+  }));
+  document.getElementById('intAddBtn').onclick = () => {
+    const slot = document.getElementById('intSlot');
+    slot.innerHTML = `<form class="card form" id="ilf" style="margin-top:12px">
+      <div class="grid2">
+        <div><label class="lbl">Person</label><select class="field" id="ilp">${people.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+        <div><label class="lbl">Type</label><select class="field" id="ilk">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select></div>
+      </div>
+      <div class="grid2">
+        <div><label class="lbl">Date</label><input class="field" type="date" id="ild" value="${today()}" max="${today()}"></div>
+        <div><label class="lbl">Minutes (optional)</label><input class="field" id="ilm" inputmode="numeric"></div>
+      </div>
+      <label class="lbl">What happened</label><textarea class="field" id="ils" required placeholder="Real conversation only: what was said, what you learned"></textarea>
+      <div class="actions" style="margin-top:14px"><button class="btn primary">Save</button><button type="button" class="btn" id="ilx">Cancel</button></div></form>`;
+    document.getElementById('ilx').onclick = () => (slot.innerHTML = '');
+    document.getElementById('ilf').onsubmit = async (e) => {
+      e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+      const dm = parseInt(document.getElementById('ilm').value, 10);
+      try {
+        await q(sb.from('interactions').insert({ person_id: document.getElementById('ilp').value, kind: document.getElementById('ilk').value,
+          happened_at: document.getElementById('ild').value, summary: document.getElementById('ils').value.trim(),
+          duration_min: Number.isFinite(dm) ? dm : null }));
+        toast('Logged ✓'); state.people = null; renderInteractions();
+      } catch { e.submitter && (e.submitter.disabled = false); }
+    };
+    document.getElementById('ils').focus();
+  };
+  draw();
+}
+
 // ---------- people ----------
 async function renderPeople() {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
   const people = await loadPeople();
   $kicker.textContent = `Directory · ${people.length} records`;
   const circles = [...new Set(people.flatMap((p) => p.circles || []))].sort();
+  const tierN = (tr) => people.filter((p) => p.tier === tr).length;
+  const noneN = people.filter((p) => !p.tier).length;
+  const circleN = (c) => people.filter((p) => (p.circles || []).includes(c)).length;
   const F = state.peopleFilter;
+  const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;
   $view.innerHTML = `
     <div class="people-wrap"><div class="people-side">
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
-      <div class="pills">${TIERS.map((t) => `<button class="pill ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}">Tier ${t}</button>`).join('')}<button class="pill ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none">Unassigned</button></div>
-      <div class="pills">${circles.map((c) => `<button class="pill ${F.circle === c ? 'on' : ''}" data-circle="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+      <div class="fgroup"><div class="flabel"><span>Tiers</span>${F.tiers.size ? '<button class="mini" data-clear="tiers">Clear</button>' : ''}</div>
+        <div class="checklist" id="tierList">${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t))}</button>`).join('')}
+        <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN)}</button></div></div>
+      <div class="fgroup"><div class="flabel"><span>Circles</span>${F.circles.size ? '<button class="mini" data-clear="circles">Clear</button>' : ''}</div>
+        <div class="checklist" id="circleList">${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c))}</button>`).join('')}</div></div>
       <div id="count" class="count"></div>
     </div>
     <ul class="list card" id="plist"></ul></div>`;
   const draw = () => {
     const needle = F.q.trim().toLowerCase();
     const rows = people.filter((p) =>
-      (!F.tiers.size || F.tiers.has(p.tier) || (F.tiers.has('__none') && !p.tier)) && (!F.circle || (p.circles || []).includes(F.circle)) &&
+      (!F.tiers.size || F.tiers.has(p.tier) || (F.tiers.has('__none') && !p.tier)) &&
+      (!F.circles.size || (p.circles || []).some((c) => F.circles.has(c))) &&
       (!needle || [p.name, ...(p.aliases || []), p.role, p.dept, p.relationship].some((s) => (s || '').toLowerCase().includes(needle))));
     document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p))).join('') : '<li class="empty">No matches.</li>';
     document.getElementById('count').textContent = rows.length === people.length ? `${people.length} records` : `${rows.length} of ${people.length}`;
   };
   const qi = document.getElementById('q');
   qi.oninput = () => { F.q = qi.value; draw(); };
-  $view.querySelectorAll('[data-tier]').forEach((c) => (c.onclick = () => {
-    F.tiers.has(c.dataset.tier) ? F.tiers.delete(c.dataset.tier) : F.tiers.add(c.dataset.tier); c.classList.toggle('on'); draw();
-  }));
-  $view.querySelectorAll('[data-circle]').forEach((c) => (c.onclick = () => {
-    F.circle = F.circle === c.dataset.circle ? null : c.dataset.circle;
-    $view.querySelectorAll('[data-circle]').forEach((x) => x.classList.toggle('on', x.dataset.circle === F.circle)); draw();
+  const toggle = (set, key, btn) => {
+    set.has(key) ? set.delete(key) : set.add(key);
+    btn.classList.toggle('on', set.has(key)); btn.setAttribute('aria-pressed', set.has(key));
+    renderPeople();
+  };
+  $view.querySelectorAll('[data-tier]').forEach((b) => (b.onclick = () => toggle(F.tiers, b.dataset.tier, b)));
+  $view.querySelectorAll('[data-circle]').forEach((b) => (b.onclick = () => toggle(F.circles, b.dataset.circle, b)));
+  $view.querySelectorAll('[data-clear]').forEach((b) => (b.onclick = () => {
+    (b.dataset.clear === 'tiers' ? F.tiers : F.circles).clear(); renderPeople();
   }));
   draw();
 }
@@ -564,7 +802,7 @@ async function renderPeople() {
 // ---------- calendar ----------
 async function renderCalendar() {
   setHead({ kicker: 'Schedule', title: 'Calendar', tab: 'calendar', add: true });
-  const [people, fus, evs] = await Promise.all([loadPeople(), openFollowups(), loadEvents()]);
+  const [people, fus, evs, tasks] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft()]);
   const t = today();
   if (!state.cal) state.cal = { y: +t.slice(0, 4), m: +t.slice(5, 7) - 1, sel: t };
   const C = state.cal;
@@ -573,6 +811,7 @@ async function renderCalendar() {
   const buildEvents = () => {
     const ev = {}; const add = (d, e) => (ev[d] ||= []).push(e);
     fus.filter((f) => f.due_date).forEach((f) => add(f.due_date, { kind: 'fu', f, cls: f.due_date < t ? 'red' : f.due_date === t ? 'amber' : 'gray' }));
+    tasks.filter((x) => x.due_date).forEach((x) => add(x.due_date, { kind: 'task', t: x, cls: x.due_date < t ? 'red' : x.due_date === t ? 'amber' : 'gray' }));
     evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber' }));
     people.forEach((p) => {
       if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray' });
@@ -596,8 +835,9 @@ async function renderCalendar() {
     while (cells.length % 7) cells.push('<div class="cal-day out"></div>');
     const items = (ev[C.sel] || []).sort((a, b) => ({ red: 0, amber: 1, gray: 2 }[a.cls] - { red: 0, amber: 1, gray: 2 }[b.cls]));
     const fuItems = items.filter((e) => e.kind === 'fu').map((e) => e.f);
+    const taskItems = items.filter((e) => e.kind === 'task').map((e) => e.t);
     const evItems = items.filter((e) => e.kind === 'ev').map((e) => e.e);
-    const pItems = items.filter((e) => e.kind !== 'fu' && e.kind !== 'ev');
+    const pItems = items.filter((e) => e.kind === 'bday' || e.kind === 'cad');
     const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     $view.innerHTML = `
       <div class="cal-bar"><span class="mo">${esc(monthName)}</span>
@@ -611,13 +851,15 @@ async function renderCalendar() {
       ${!items.length ? '<div class="card empty">Nothing scheduled.</div>' : ''}
       ${evItems.length ? `<div style="margin-bottom:${(pItems.length || fuItems.length) ? 8 : 0}px">${evList(evItems, '')}</div>` : ''}
       ${pItems.length ? `<ul class="list card">${pItems.map((e) => personRow(e.p, e.kind === 'bday' ? st(C.sel === t ? 'amber' : 'gray', 'Birthday') : st(e.cls, e.cls === 'red' ? dueInfo(e.p).label : 'Check-in due'))).join('')}</ul>` : ''}
-      ${fuItems.length ? `<div style="margin-top:${(pItems.length || evItems.length) ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}`;
+      ${fuItems.length ? `<div style="margin-top:${(pItems.length || evItems.length) ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}
+      ${taskItems.length ? `<div style="margin-top:${(pItems.length || evItems.length || fuItems.length) ? 8 : 0}px">${taskList(taskItems, '')}</div>` : ''}`;
     $view.querySelectorAll('[data-day]').forEach((b) => (b.onclick = () => { C.sel = b.dataset.day; draw(); }));
     document.getElementById('calPrev').onclick = () => { C.m -= 1; if (C.m < 0) { C.m = 11; C.y -= 1; } draw(); };
     document.getElementById('calNext').onclick = () => { C.m += 1; if (C.m > 11) { C.m = 0; C.y += 1; } draw(); };
     document.getElementById('calToday').onclick = () => { C.y = +t.slice(0, 4); C.m = +t.slice(5, 7) - 1; C.sel = t; draw(); };
     document.getElementById('calAddEv').onclick = () => openEventForm(document.getElementById('evSlot'), { date: C.sel, people, onDone: renderCalendar });
     bindFollowups(renderCalendar);
+    bindTasks(renderCalendar);
     bindEvents(renderCalendar, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderCalendar));
   };
   draw();
@@ -625,11 +867,12 @@ async function renderCalendar() {
 
 // ---------- person (panel) ----------
 async function renderPerson(id) {
-  const [p, fus, ints, pevs] = await Promise.all([
+  const [p, fus, ints, pevs, ptasks] = await Promise.all([
     q(sb.from('people').select('*').eq('id', id).single()),
     q(sb.from('follow_ups').select('*').eq('person_id', id).order('status').order('created_at', { ascending: false })),
     q(sb.from('interactions').select('*').eq('person_id', id).order('happened_at', { ascending: false }).order('created_at', { ascending: false })),
     q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').eq('person_id', id).gte('event_date', today()).order('event_date').order('event_time')),
+    personTasks(id),
   ]);
   panelHead({ kicker: [p.tier ? `Tier ${p.tier}` : 'No tier', ...(p.circles || [])].join(' · '), title: p.name,
     actions: `<a class="pill" href="#/p/${p.id}/edit">Edit</a>` });
@@ -653,6 +896,7 @@ async function renderPerson(id) {
     <div class="actions" style="margin-top:14px">
       <button class="btn primary" id="logBtn">Log interaction</button>
       <button class="btn" id="fuBtn">Add follow-up</button>
+      <button class="btn" id="taskBtn">Add task</button>
       <button class="btn" id="evBtn">Add event</button>
     </div>
     <div id="formSlot"></div>
@@ -660,6 +904,9 @@ async function renderPerson(id) {
     ${sec('Follow-ups', open.length + parked.length)}
     <div class="card">${open.length || parked.length ? `<ul class="list">${[...open, ...parked].map((f) => fuItem({ ...f, person: null })).join('')}</ul>` : '<div class="empty">None open.</div>'}
       ${closed.length ? `<details class="more"><summary>${closed.length} done</summary><ul class="list">${closed.map((f) => fuItem({ ...f, person: null })).join('')}</ul></details>` : ''}</div>
+
+    ${sec('Tasks', ptasks.length)}
+    ${taskList(ptasks.map((x) => ({ ...x, person: null })), 'None open.')}
 
     ${sec('Upcoming events', pevs.length)}
     ${evList(pevs, 'None scheduled.', true)}
@@ -673,6 +920,7 @@ async function renderPerson(id) {
       ${p.muse_notes ? `<details class="more"><summary>Muse's notes</summary><div class="notes">${md(p.muse_notes.replace(/^---[\s\S]*?---\s*/, ''))}</div></details>` : ''}</div>`;
 
   bindFollowups(() => renderPerson(id), root);
+  bindTasks(() => renderPerson(id), root);
   const slot = document.getElementById('formSlot');
   bindEvents(() => renderPerson(id), root, (eid) => editEvent(eid, slot, () => renderPerson(id)));
   document.getElementById('logBtn').onclick = () => {
@@ -708,6 +956,10 @@ async function renderPerson(id) {
   document.getElementById('evBtn').onclick = async () => {
     const people = await loadPeople();
     openEventForm(slot, { personId: id, people, onDone: () => renderPerson(id) });
+  };
+  document.getElementById('taskBtn').onclick = async () => {
+    const people = await loadPeople();
+    openTaskForm(slot, { personId: id, people, onDone: () => renderPerson(id) });
   };
 }
 
@@ -788,7 +1040,7 @@ function renderPassword() {
 }
 
 // ---------- router ----------
-const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/events': renderEvents, '#/recent': renderRecent, '#/calendar': renderCalendar };
+const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/tasks': renderTasks, '#/interactions': renderInteractions, '#/events': renderEvents, '#/recent': renderRecent, '#/calendar': renderCalendar };
 function panelRoute(h) {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return () => renderEdit(m[1]);
