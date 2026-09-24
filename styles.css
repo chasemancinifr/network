@@ -1,38 +1,42 @@
 /* ============================================================
-   Warm Editorial
-   Warm paper surfaces, ink text, editorial serif headlines.
-   Structure stays quiet; color only directs attention:
+   Noir — dark-first, high-class CRM palette.
+   Deep graphite surfaces, hairline borders, champagne-gold accent.
+   Color only directs attention:
    red   = overdue / critical / destructive
-   amber = today / active / primary action / key numerals
+   gold  = today / active / primary action / key numerals
    ============================================================ */
 :root {
-  --bg: #f4f0e6; --surface: #fffdf7; --surface-2: #eae4d5; --text: #171713; --muted: #6d695f; --line: #c9c1af;
-  --inv-bg: #171713; --inv-text: #f4f0e6; --scrim: rgba(23, 23, 19, .32);
-  --red: #b84a2b; --amber: #e8a21a; --on-accent: #171713; --on-red: #fffdf7;
+  --bg: #0a0c10; --surface: #10141a; --surface-2: #171c24; --text: #edf0f4; --muted: #8b94a5; --line: #232a35;
+  --inv-bg: #edf0f4; --inv-text: #0a0c10; --scrim: rgba(0, 0, 0, .6);
+  --red: #e0654d; --amber: #d2a24c; --on-accent: #0a0c10; --on-red: #ffffff;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --serif: "Newsreader", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
   --mono: "JetBrains Mono", "SF Mono", ui-monospace, "Roboto Mono", Menlo, Consolas, monospace;
-  --r: 14px; --rp: 10px;
-  --shadow: 0 18px 55px rgba(40, 35, 24, .16);
+  --r: 12px; --rp: 8px;
+  --shadow: 0 12px 32px rgba(0, 0, 0, .45);
   --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
   --tabbar: 58px;
+  color-scheme: dark;
+}
+/* explicit light choice keeps the warm editorial theme */
+:root[data-theme="light"] {
+  --bg: #f4f0e6; --surface: #fffdf7; --surface-2: #eae4d5; --text: #171713; --muted: #6d695f; --line: #c9c1af;
+  --inv-bg: #171713; --inv-text: #f4f0e6; --scrim: rgba(23, 23, 19, .32);
+  --red: #b84a2b; --amber: #e8a21a; --on-accent: #171713; --on-red: #fffdf7;
+  --r: 14px; --rp: 10px;
+  --shadow: 0 18px 55px rgba(40, 35, 24, .16);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #171713; --surface: #23221d; --surface-2: #302e27; --text: #f4f0e6; --muted: #9a937f; --line: #38352a;
-    --inv-bg: #f4f0e6; --inv-text: #171713; --scrim: rgba(0, 0, 0, .55);
-    --red: #c65f36; --amber: #f0ae2d;
-    --shadow: 0 18px 55px rgba(0, 0, 0, .5);
-    color-scheme: dark;
+@media (prefers-color-scheme: light) {
+  /* "auto" theme on a light-mode device */
+  :root:not([data-theme]) {
+    --bg: #f4f0e6; --surface: #fffdf7; --surface-2: #eae4d5; --text: #171713; --muted: #6d695f; --line: #c9c1af;
+    --inv-bg: #171713; --inv-text: #f4f0e6; --scrim: rgba(23, 23, 19, .32);
+    --red: #b84a2b; --amber: #e8a21a; --on-accent: #171713; --on-red: #fffdf7;
+    --r: 14px; --rp: 10px;
+    --shadow: 0 18px 55px rgba(40, 35, 24, .16);
+    color-scheme: light;
   }
-}
-:root[data-theme="dark"] {
-  --bg: #171713; --surface: #23221d; --surface-2: #302e27; --text: #f4f0e6; --muted: #9a937f; --line: #38352a;
-  --inv-bg: #f4f0e6; --inv-text: #171713; --scrim: rgba(0, 0, 0, .55);
-  --red: #c65f36; --amber: #f0ae2d;
-  --shadow: 0 18px 55px rgba(0, 0, 0, .5);
-  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -147,7 +151,7 @@ a.row:hover { background: var(--surface-2); }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 38px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--rp); background: var(--surface);
   color: var(--text); font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase; font-weight: 500; cursor: pointer; }
 .btn:hover { border-color: var(--muted); }
-.btn.primary { background: var(--amber); border-color: var(--amber); color: var(--on-accent); font-weight: 600; box-shadow: 0 6px 18px rgba(232, 162, 26, .35); }
+.btn.primary { background: var(--amber); border-color: var(--amber); color: var(--on-accent); font-weight: 600; box-shadow: 0 6px 18px rgba(210, 162, 76, .32); }
 .btn.danger { color: var(--red); border-color: var(--red); background: transparent; }
 .btn.small { height: 28px; padding: 0 9px; font-size: 10.5px; }
 .btn:disabled { opacity: .5; }
@@ -156,7 +160,7 @@ a.row:hover { background: var(--surface-2); }
 /* ---------- forms ---------- */
 .search, .field { width: 100%; height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--rp); background: var(--surface); color: var(--text); outline: none; font-size: 15px; }
 .search { margin-bottom: 10px; }
-select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236d695f' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+select.field { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b94a5' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-position: right 14px center; background-size: 10px 6px; background-repeat: no-repeat; padding-right: 32px; }
 textarea.field { height: auto; min-height: 96px; padding: 10px 12px; resize: vertical; line-height: 1.45; }
 .search:focus, .field:focus { border-color: var(--text); }
@@ -269,7 +273,7 @@ details.more .notes { padding-top: 0; }
 .linkrow a.danger { color: var(--red); }
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar) + 14px + var(--safe-b)); z-index: 50; max-width: calc(100vw - 32px);
   background: var(--inv-bg); color: var(--inv-text); padding: 9px 14px; border-radius: var(--rp); font-size: 11.5px; letter-spacing: .04em; text-transform: uppercase; }
-.toast.err { background: var(--red); color: var(--on-red); }
+.toast.err { background: #a8432c; color: #fff; }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
 
 /* ---------- login ---------- */

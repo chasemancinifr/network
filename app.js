@@ -128,7 +128,7 @@ function applyTheme(t) {
   if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', t);
   $themeBtn.innerHTML = THEME_ICONS[t]; $themeBtn.setAttribute('aria-label', `Theme: ${t}`); $themeBtn.title = `Theme: ${t}`;
   const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
-  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#1A1918' : '#F4F3F0'));
+  document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', dark ? '#0a0c10' : '#F4F3F0'));
 }
 $themeBtn.onclick = () => {
   const order = ['auto', 'light', 'dark']; const next = order[(order.indexOf(getTheme()) + 1) % 3];
