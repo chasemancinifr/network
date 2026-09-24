@@ -354,8 +354,9 @@ function upcomingBirthdays(people, days) {
 // ---------- today = the dashboard (same widgets everywhere; two columns on desktop) ----------
 async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
-  const [people, fus, evs, ints] = await Promise.all([loadPeople(), openFollowups(), loadEvents(),
-    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(today(), -7)))]);
+  const [people, fus, evs, ints, intsMonth] = await Promise.all([loadPeople(), openFollowups(), loadEvents(),
+    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(today(), -7))),
+    q(sb.from('interactions').select('id').gte('happened_at', today().slice(0, 8) + '01'))]);
   const t = today();
   const week = addDays(t, 7);
   const overdue = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
@@ -409,6 +410,7 @@ async function renderToday() {
         <div class="pulse-row"><span>People</span><b>${people.length}</b></div>
         <div class="pulse-row"><span>New this month</span><b>${newThisMonth}</b></div>
         <div class="pulse-row"><span>Conversations · 7 days</span><b>${ints.length}</b></div>
+        <div class="pulse-row"><span>Conversations · this month</span><b>${intsMonth.length}</b></div>
       </div>
     </div></div>
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
