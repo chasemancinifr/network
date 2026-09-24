@@ -43,6 +43,18 @@ function ago(d) {
   if (n <= 0) return 'today'; if (n === 1) return 'yesterday';
   if (n < 60) return `${n}d ago`; return fmtDate(d);
 }
+// calendar-day (YYYY-MM-DD) of a date or timestamp value
+const dayOf = (ts) => { const s = String(ts || ''); return s.length === 10 ? s : (s ? new Date(s).toLocaleDateString('en-CA') : ''); };
+const relTs = (ts) => (ts ? ago(dayOf(ts)) : 'never');
+// consecutive-day interaction streak ending today (counts through yesterday
+// when nothing is logged yet today)
+function streakOf(rows, t) {
+  const days = new Set(rows.map((r) => dayOf(r.happened_at)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)));
+  let d = t, n = 0;
+  if (!days.has(d)) d = addDays(d, -1);
+  while (days.has(d)) { n++; d = addDays(d, -1); }
+  return n;
+}
 function bday(p) {
   if (!p.birth_month) return '';
   const s = new Date(2000, p.birth_month - 1, p.birth_day).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
@@ -240,13 +252,13 @@ function fuStatus(f) {
   if (f.due_date === t) return st('amber', 'Today');
   return st('gray', monoDate(f.due_date));
 }
-function fuItem(f) {
+function fuItem(f, sub = '') {
   const who = f.person ? `<a href="#/p/${f.person.id}">${esc(f.person.name)}</a>` : '';
   const ctl = f.status === 'open'
     ? `<button class="check" data-done="${f.id}" aria-label="Mark done" title="Mark done"></button>`
     : `<button class="btn small" data-reopen="${f.id}">Reopen</button>`;
   const park = f.status === 'open' ? `<button class="btn small" data-park="${f.id}">Park</button>` : '';
-  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${who ? `<span>${who}</span>` : ''}</span></div>${park}</li>`;
+  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${who ? `<span>${who}</span>` : ''}</span>${sub}</div>${park}</li>`;
 }
 function bindFollowups(rerender, root = $view) {
   root.querySelectorAll('[data-done]').forEach((b) => (b.onclick = async () => {
@@ -261,7 +273,30 @@ function bindFollowups(rerender, root = $view) {
   }));
   root.querySelectorAll('[data-fu-edit]').forEach((b) => (b.onclick = () => editFollowup(b.dataset.fuEdit, rerender)));
 }
-const fuList = (fus, empty) => `<div class="card">${fus.length ? `<ul class="list">${fus.map(fuItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+const fuList = (fus, empty, sub = () => '') => `<div class="card">${fus.length ? `<ul class="list">${fus.map((f) => fuItem(f, sub(f))).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
+
+// suggested next-touch prompt: one concrete message starter built from the
+// person's real data. Picked deterministically per person (stable per render),
+// from four styles: casual check-in, value drop, question about their world,
+// warm re-entry. A birthday inside 3 weeks always wins.
+function nextTouch(p, last) {
+  const first = String(p.name || 'them').split(' ')[0];
+  const days = p.last_contact ? daysBetween(p.last_contact, today()) : null;
+  const when = days == null ? 'a while' : days <= 1 ? 'a day or two' : `${days} days`;
+  const bd = p.birth_month ? upcomingBirthdays([p], 21)[0] : null;
+  if (bd) return `Hey ${first} — your birthday's ${bd.in <= 1 ? 'right around the corner' : `in ${bd.in} days`}. Let's grab coffee to celebrate?`;
+  const cands = [`Hey ${first} — it's been ${when}. What's new on your end?`];
+  if (p.org) cands.push(`Hey ${first}, how are things at ${p.org}?`);
+  else if (p.role) cands.push(`Hey ${first}, how's the ${String(p.role).toLowerCase()} world treating you lately?`);
+  else if ((p.circles || []).length) cands.push(`Hey ${first}, been thinking about the ${(p.circles || [])[0]} crew — how have you been?`);
+  if (last && last.summary) cands.push(`Hey ${first} — last we talked was about ${last.summary.slice(0, 70).trim()}… would love to catch up properly.`);
+  else if (last) cands.push(`Hey ${first} — been ${when} since our last ${last.kind}. Let's not let it go that long again.`);
+  if (p.org) cands.push(`Came across something about ${p.org} I thought you'd like — want me to send it over?`);
+  else cands.push(`${first}, saw something I think you'd get a kick out of — want me to pass it along?`);
+  const h = [...String(p.id)].reduce((a, c) => a + c.charCodeAt(0), 0);
+  return cands[h % cands.length];
+}
+const ntouch = (text) => `<div class="ntouch"><span class="nt-k">Next touch</span><span>${esc(text)}</span></div>`;
 
 // ---------- task rows (shared) ----------
 // Tasks are general to-dos; follow-ups stay person-centric nudges. A task may
@@ -447,10 +482,12 @@ function upcomingBirthdays(people, days) {
 // ---------- today = the dashboard (same widgets everywhere; two columns on desktop) ----------
 async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
-  const [people, fus, evs, tasks, ints, intsMonth] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft(),
-    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(today(), -7))),
-    q(sb.from('interactions').select('id').gte('happened_at', today().slice(0, 8) + '01'))]);
   const t = today();
+  const [people, fus, evs, tasks, intRows, intsMonth] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft(),
+    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(t, -63)).limit(2000)),
+    q(sb.from('interactions').select('id').gte('happened_at', t.slice(0, 8) + '01'))]);
+  const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -7)).length;
+  const streak = streakOf(intRows, t);
   const week = addDays(t, 7);
   const overdue = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const upcoming = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && !x.d.overdue);
@@ -508,8 +545,9 @@ async function renderToday() {
         <div class="pulse-tiers">${TIERS.map((tr) => `<span><b>${tierN(tr)}</b>Tier ${tr}</span>`).join('')}</div>
         <div class="pulse-row"><span>People</span><b>${people.length}</b></div>
         <div class="pulse-row"><span>New this month</span><b>${newThisMonth}</b></div>
-        <div class="pulse-row"><span>Conversations · 7 days</span><b>${ints.length}</b></div>
+        <div class="pulse-row"><span>Conversations · 7 days</span><b>${ints7}</b></div>
         <div class="pulse-row"><span>Conversations · this month</span><b>${intsMonth.length}</b></div>
+        <div class="pulse-row"><span>🔥 Streak</span><b>${streak ? streak + '-day' : '–'}</b></div>
       </div>
     </div></div>
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
@@ -527,12 +565,29 @@ async function renderOverdue() {
   const people_ = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const late = fus.filter((f) => f.due_date && f.due_date < t);
   const lateTasks = tasks.filter((x) => x.due_date && x.due_date < t);
+  // last interaction per overdue person, to ground the touch prompts
+  const ids = [...new Set([...people_.map((x) => x.p.id), ...late.map((f) => f.person && f.person.id).filter(Boolean)])];
+  const lastById = {};
+  if (ids.length) {
+    const rows = await q(sb.from('interactions').select('person_id,kind,happened_at,summary').in('person_id', ids)
+      .order('happened_at', { ascending: false }).order('created_at', { ascending: false }).limit(ids.length * 4));
+    rows.forEach((r) => { if (!lastById[r.person_id]) lastById[r.person_id] = r; });
+  }
+  const fullPerson = (f) => {
+    const fp = people.find((pp) => pp.id === (f.person && f.person.id)) || {};
+    return { circles: [], org: '', role: '', ...fp, name: (f.person && f.person.name) || fp.name };
+  };
+  const cadRow = (x) => `<li><a class="row" href="#/p/${x.p.id}">
+      <span class="av">${esc(initials(x.p.name))}</span>
+      <span class="main"><span class="name">${esc(x.p.name)}</span><span class="meta">${esc(personMeta(x.p))}</span></span>
+      ${st('red', x.d.label)}</a>
+      ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;
   $kicker.textContent = `Attention · ${people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
     ${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
-    ${people_.length ? `<ul class="list card">${people_.map((x) => personRow(x.p, st('red', x.d.label))).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}
+    ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}
     ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
-    ${fuList(late, 'No follow-ups past their due date.')}
+    ${fuList(late, 'No follow-ups past their due date.', (f) => { const fp = fullPerson(f); return ntouch(nextTouch(fp, lastById[fp.id])); })}
     ${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
     ${taskList(lateTasks, 'No tasks past their due date.')}`;
   bindFollowups(renderOverdue);
@@ -686,6 +741,15 @@ async function renderInteractions() {
   const t = today();
   const inLast = (n) => ints.filter((i) => i.happened_at && i.happened_at >= addDays(t, -n)).length;
   const kindN = (k) => ints.filter((i) => i.kind === k).length;
+  const mk = t.slice(0, 7);
+  const talkCounts = {};
+  ints.forEach((i) => {
+    if (i.person && i.happened_at && i.happened_at.slice(0, 7) === mk) {
+      (talkCounts[i.person.id] ||= { p: i.person, n: 0 }).n++;
+    }
+  });
+  const topTalk = Object.values(talkCounts).sort((a, b) => b.n - a.n || a.p.name.localeCompare(b.p.name)).slice(0, 5);
+  const monthName = new Date(t + 'T12:00:00').toLocaleDateString(undefined, { month: 'long' });
   $view.innerHTML = `
     <div class="stats">
       <span class="stat"><span class="k">All time</span><span class="v">${ints.length}</span></span>
@@ -693,6 +757,10 @@ async function renderInteractions() {
       <span class="stat"><span class="k">Last 30 days</span><span class="v">${inLast(30)}</span></span>
       <span class="stat"><span class="k">With notes</span><span class="v">${ints.filter((i) => i.summary).length}</span></span>
     </div>
+    ${topTalk.length ? `<div class="card board">
+      <div class="board-head"><span>Most talked to</span><span class="mono">${esc(monthName)}</span></div>
+      <ol>${topTalk.map((x, i) => `<li><a class="row" href="#/p/${x.p.id}"><span class="rank">${i + 1}</span><span class="main"><span class="name">${esc(x.p.name)}</span></span><span class="bcount">${x.n} interaction${x.n === 1 ? '' : 's'} this month</span></a></li>`).join('')}</ol>
+    </div>` : ''}
     <div class="cal-bar"><div class="pills" role="tablist">
       ${['all', ...KINDS].map((k) => `<button class="pill ${k === state.intKind ? 'on' : ''}" data-kind="${k}" role="tab" aria-selected="${k === state.intKind}">${k === 'all' ? 'All' : `${k} · ${kindN(k)}`}</button>`).join('')}</div>
       <button class="pill" id="intAddBtn">+ Log</button></div>
@@ -762,6 +830,8 @@ async function renderPeople() {
   const tierN = (tr) => people.filter((p) => p.tier === tr).length;
   const noneN = people.filter((p) => !p.tier).length;
   const circleN = (c) => people.filter((p) => (p.circles || []).includes(c)).length;
+  const noCircleN = people.filter((p) => !(p.circles || []).length).length;
+  const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
   const F = state.peopleFilter;
   const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;
   $view.innerHTML = `
@@ -771,7 +841,10 @@ async function renderPeople() {
         <div class="checklist" id="tierList">${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t))}</button>`).join('')}
         <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN)}</button></div></div>
       <div class="fgroup"><div class="flabel"><span>Circles</span>${F.circles.size ? '<button class="mini" data-clear="circles">Clear</button>' : ''}</div>
-        <div class="checklist" id="circleList">${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c))}</button>`).join('')}</div></div>
+        <div class="checklist" id="circleList">${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c))}</button>`).join('')}
+        <button class="chk ${F.circles.has('__none') ? 'on' : ''}" data-circle="__none" aria-pressed="${F.circles.has('__none')}">${chk(0, 'Unassigned', noCircleN)}</button></div></div>
+      ${recent.length ? `<div class="fgroup recent-only"><div class="flabel"><span>Recently added</span></div>
+        <div class="checklist">${recent.map((p) => `<a class="chk" href="#/p/${p.id}"><span class="t">${esc(p.name)}</span>${p.tier ? `<span class="tierb">Tier ${p.tier}</span>` : ''}<span class="n">added ${ago(dayOf(p.created_at))}</span></a>`).join('')}</div></div>` : ''}
       <div id="count" class="count"></div>
     </div>
     <ul class="list card" id="plist"></ul></div>`;
@@ -779,7 +852,7 @@ async function renderPeople() {
     const needle = F.q.trim().toLowerCase();
     const rows = people.filter((p) =>
       (!F.tiers.size || F.tiers.has(p.tier) || (F.tiers.has('__none') && !p.tier)) &&
-      (!F.circles.size || (p.circles || []).some((c) => F.circles.has(c))) &&
+      (!F.circles.size || (p.circles || []).some((c) => F.circles.has(c)) || (F.circles.has('__none') && !(p.circles || []).length)) &&
       (!needle || [p.name, ...(p.aliases || []), p.role, p.dept, p.relationship].some((s) => (s || '').toLowerCase().includes(needle))));
     document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p))).join('') : '<li class="empty">No matches.</li>';
     document.getElementById('count').textContent = rows.length === people.length ? `${people.length} records` : `${rows.length} of ${people.length}`;
@@ -888,9 +961,15 @@ async function renderPerson(id) {
     ['Location', p.location], ['How met', p.how_met], ['Also', (p.aliases || []).join(', ')], ['Tenure', p.tenure === 'vet' ? '5+ years' : p.tenure],
   ].filter((f) => f[1]);
   const root = $pBody;
+  const last = ints[0];
+  const lastD = last && last.happened_at ? dayOf(last.happened_at) : null;
   root.innerHTML = `
     <div class="p-hero"><span class="av lg">${esc(initials(p.name))}</span>
       <div class="main"><div class="sub">${esc(p.role || p.relationship || '')}</div><div style="margin-top:4px">${personStatus(p) || st('ring', p.last_contact ? `Last contact ${ago(p.last_contact)}` : 'No cadence')}</div></div></div>
+    ${last ? `<div class="card recap">
+      <div class="recap-head"><span>Last interaction</span><span class="mono">${lastD ? `${monoDate(lastD)} · ${ago(lastD)}` : 'Undated'}</span></div>
+      <div class="recap-body">${st('amber', last.kind)}${last.duration_min ? `<span class="meta">${last.duration_min} min</span>` : ''}${last.summary ? `<p>${esc(last.summary)}</p>` : ''}</div>
+    </div>` : ''}
     ${facts.length ? `<dl class="facts">${facts.map(([k, v, raw]) => `<dt>${k}</dt><dd>${raw ? v : esc(v)}</dd>`).join('')}</dl>` : ''}
 
     <div class="actions" style="margin-top:14px">
