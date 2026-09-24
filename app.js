@@ -106,7 +106,12 @@ function openPanel() {
 function closePanel() {
   $panel.hidden = true; $scrim.hidden = true; document.body.classList.remove('panel-open'); $pBody.innerHTML = ''; $pActions.innerHTML = '';
 }
-const dismissPanel = () => { location.hash = state.base; };
+const dismissPanel = () => {
+  // Editors opened directly (e.g. the follow-up editor) don't change the hash,
+  // so setting it to state.base fires no hashchange — close outright instead.
+  if (location.hash === state.base) closePanel();
+  else location.hash = state.base;
+};
 document.getElementById('pClose').onclick = dismissPanel;
 $scrim.onclick = dismissPanel;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$panel.hidden) dismissPanel(); });
@@ -276,14 +281,14 @@ async function editFollowup(fuId, rerender) {
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button></div></form>`;
   let status = f.status;
   root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
-  document.getElementById('fe_cancel').onclick = () => rerender();
+  document.getElementById('fe_cancel').onclick = () => dismissPanel();
   document.getElementById('fef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('fe_title').value.trim(), detail: document.getElementById('fe_detail').value.trim() || null,
       due_date: document.getElementById('fe_due').value || null, person_id: document.getElementById('fe_person').value, status };
     if (status === 'closed' && f.status !== 'closed') row.completed_at = new Date().toISOString();
     if (status !== 'closed' && f.status === 'closed') row.completed_at = null;
-    try { await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓'); rerender(); }
+    try { await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓'); closePanel(); rerender(); }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('fe_title').focus();
@@ -381,7 +386,7 @@ async function renderToday() {
   $view.innerHTML = `
     <div class="stats">
       <a class="stat ${nOver ? 'red' : ''}" href="#/overdue"><span class="k">Overdue</span><span class="v">${nOver}</span></a>
-      <a class="stat ${todayFus ? 'amber' : ''}" href="#/calendar"><span class="k">${todayFus ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${todayFus}</span></a>
+      <a class="stat ${todayFus.length ? 'amber' : ''}" href="#/calendar"><span class="k">${todayFus.length ? '<i class="dot"></i>' : ''}Due today</span><span class="v">${todayFus.length}</span></a>
       <a class="stat" href="#/followups"><span class="k">Open</span><span class="v">${fus.length}</span></a>
       <a class="stat" href="#/calendar"><span class="k">Bdays · 21d</span><span class="v">${bdays.length}</span></a>
     </div>
