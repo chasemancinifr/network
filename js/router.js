@@ -1,12 +1,13 @@
 // Router: hash routes → pages or the slide-over panel, plus boot.
 
 import { sb } from './db.js';
-import { $view, $pBody, setHead, closePanel, openPanel } from './ui.js';
+import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
 import { renderToday, renderPeople, renderOverdue, renderFollowups, renderTasks, renderInteractions, renderEvents, renderRecent, renderCalendar } from './pages.js';
 import { renderPerson, renderEdit } from './person.js';
 import { renderLogin, renderPassword } from './auth.js';
+import { openNewMenu } from './new.js';
 
 // ---------- router ----------
 const BASE = { '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/followups': renderFollowups, '#/tasks': renderTasks, '#/interactions': renderInteractions, '#/events': renderEvents, '#/recent': renderRecent, '#/calendar': renderCalendar };
@@ -52,6 +53,7 @@ function bootFail() {
 
 export function boot() {
   window.addEventListener('hashchange', route);
+  $add.onclick = () => openNewMenu();
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
     if (!!session !== was) { state.people = null; route(); }

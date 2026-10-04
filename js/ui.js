@@ -73,7 +73,7 @@ export const dismissPanel = () => {
 document.getElementById('pClose').onclick = dismissPanel;
 $scrim.onclick = dismissPanel;
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$panel.hidden) dismissPanel(); });
-$add.onclick = () => (location.hash = '#/new');
+// $add's action is bound by the router (openNewMenu) — see js/router.js.
 
 export function pwField(id, name, autocomplete, placeholder, extra = '') {
   return `<div class="pwwrap"><input class="field" type="password" id="${id}" name="${name}" autocomplete="${autocomplete}" placeholder="${placeholder}"
