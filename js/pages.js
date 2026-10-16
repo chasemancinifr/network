@@ -10,7 +10,7 @@ import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 
 // ---------- dashboard = the big picture. No action items live here. ----------
-const REL_COLORS = { professional: '#0a84ff', friend: '#30d158', family: '#bf5af2', customer: '#ff9f0a', prospect: '#ff453a', business: '#64d2ff', '': '#8e8e93' };
+const REL_COLORS = { professional: 'var(--rel-professional)', friend: 'var(--rel-friend)', family: 'var(--rel-family)', customer: 'var(--rel-customer)', prospect: 'var(--rel-prospect)', business: 'var(--rel-business)', '': 'var(--rel-none)' };
 const REL_LABELS = { professional: 'work', friend: 'friends', family: 'family', customer: 'customers', prospect: 'prospects', business: 'business', '': 'uncategorized' };
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
@@ -129,7 +129,9 @@ export async function renderOverdue() {
 }
 // ---------- actions: follow-ups + tasks merged, one list ----------
 const badge = (label, cls) => `<span class="typebadge ${cls}">${label}</span>`;
-const withBadge = (html, label, cls) => html.replace('<div class="main">', `${badge(label, cls)}<div class="main">`);
+const withBadge = (html, label, cls) => html
+  .replace(/<button class="btn small" data-park="[^"]*">Park<\/button>/, '')
+  .replace('<div class="main">', `${badge(label, cls)}<div class="main">`);
 export async function renderActions() {
   setHead({ kicker: 'Follow-ups + tasks', title: 'Actions', tab: 'actions', add: true });
   const s = state.actionStatus; // open | parked | done
@@ -398,6 +400,15 @@ export async function renderCalendar() {
     const evItems = items.filter((e) => e.kind === 'ev').map((e) => e.e);
     const pItems = items.filter((e) => e.kind === 'bday' || e.kind === 'cad');
     const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    // all events: upcoming first (grouped by month), then past
+    const upcomingEvs = evs.filter((e) => e.event_date >= t).sort((a, b) => (a.event_date < b.event_date ? -1 : 1));
+    const pastEvs = evs.filter((e) => e.event_date < t).sort((a, b) => (a.event_date < b.event_date ? 1 : -1));
+    const byMonth = {};
+    upcomingEvs.forEach((e) => { const m = e.event_date.slice(0, 7); (byMonth[m] ||= []).push(e); });
+    const monthGroups = Object.keys(byMonth).sort().map((m) => ({
+      label: new Date(m + '-02T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+      evs: byMonth[m],
+    }));
     $view.innerHTML = `
       <div class="cal-bar"><span class="mo">${esc(monthName)}</span>
         <button class="pill" id="calAddEv">+ Event</button>
@@ -411,7 +422,10 @@ export async function renderCalendar() {
       ${evItems.length ? `<div style="margin-bottom:${(pItems.length || fuItems.length) ? 8 : 0}px">${evList(evItems, '')}</div>` : ''}
       ${pItems.length ? `<ul class="list card">${pItems.map((e) => personRow(e.p, e.kind === 'bday' ? st(C.sel === t ? 'amber' : 'gray', 'Birthday') : st(e.cls, e.cls === 'red' ? dueInfo(e.p).label : 'Check-in due'))).join('')}</ul>` : ''}
       ${fuItems.length ? `<div style="margin-top:${(pItems.length || evItems.length) ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}
-      ${taskItems.length ? `<div style="margin-top:${(pItems.length || evItems.length || fuItems.length) ? 8 : 0}px">${taskList(taskItems, '')}</div>` : ''}`;
+      ${taskItems.length ? `<div style="margin-top:${(pItems.length || evItems.length || fuItems.length) ? 8 : 0}px">${taskList(taskItems, '')}</div>` : ''}
+      ${sec('Upcoming events', upcomingEvs.length, '', upcomingEvs.length ? 'amber' : '')}
+      ${monthGroups.length ? monthGroups.map((g) => `<div class="flabel" style="margin-top:10px"><span>${esc(g.label)}</span></div>${evList(g.evs, '', true)}`).join('') : '<div class="card empty">No upcoming events.</div>'}
+      ${pastEvs.length ? `${sec('Past events', pastEvs.length)}${evList(pastEvs.slice(0, 12), '', true)}` : ''}`;
     $view.querySelectorAll('[data-day]').forEach((b) => (b.onclick = () => { C.sel = b.dataset.day; draw(); }));
     document.getElementById('calPrev').onclick = () => { C.m -= 1; if (C.m < 0) { C.m = 11; C.y -= 1; } draw(); };
     document.getElementById('calNext').onclick = () => { C.m += 1; if (C.m > 11) { C.m = 0; C.y += 1; } draw(); };
