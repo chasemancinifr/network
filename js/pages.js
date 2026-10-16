@@ -10,8 +10,8 @@ import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 
 // ---------- dashboard = the big picture. No action items live here. ----------
-const REL_COLORS = { PROFESSIONAL: 'var(--rel-professional)', FRIEND: 'var(--rel-friend)', FAMILY: 'var(--rel-family)', 'FAMILY FRIEND': 'var(--rel-familyfriend)', CUSTOMER: 'var(--rel-customer)', PROSPECT: 'var(--rel-prospect)', BUSINESS: 'var(--rel-business)', '': 'var(--rel-none)' };
-const REL_LABELS = { PROFESSIONAL: 'work', FRIEND: 'friends', FAMILY: 'family', 'FAMILY FRIEND': 'family friends', CUSTOMER: 'customers', PROSPECT: 'prospects', BUSINESS: 'business', '': 'uncategorized' };
+const REL_COLORS = { PROFESSIONAL: 'var(--rel-professional)', FRIEND: 'var(--rel-friend)', FAMILY: 'var(--rel-family)', 'FAMILY FRIEND': 'var(--rel-familyfriend)', CUSTOMER: 'var(--rel-customer)', PROSPECT: 'var(--rel-prospect)', BUSINESS: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
+const REL_LABELS = { PROFESSIONAL: 'work', FRIEND: 'friends', FAMILY: 'family', 'FAMILY FRIEND': 'family friends', CUSTOMER: 'customers', PROSPECT: 'prospects', BUSINESS: 'business', OTHER: 'other', '': 'uncategorized' };
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
@@ -24,8 +24,8 @@ export async function renderDashboard() {
     .sort((a, b) => daysBetween(b.last_contact, t) - daysBetween(a.last_contact, t)).slice(0, 8);
   const bdays = upcomingBirthdays(people, 21);
   const relN = {};
-  people.forEach((p) => { const r = (p.relationship || '').trim(); relN[r] = (relN[r] || 0) + 1; });
-  const relOrder = ['PROFESSIONAL', 'FRIEND', 'FAMILY', 'FAMILY FRIEND', 'CUSTOMER', 'PROSPECT', 'BUSINESS', ''];
+  people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
+  const relOrder = [...RELS, 'OTHER', ''];
   const bar = relOrder.filter((r) => relN[r]).map((r) =>
     `<span style="width:${(relN[r] / people.length * 100).toFixed(1)}%;background:${REL_COLORS[r]}" title="${REL_LABELS[r]}: ${relN[r]}"></span>`).join('');
   const legend = relOrder.filter((r) => relN[r]).map((r) =>
@@ -311,9 +311,11 @@ export async function renderPeople() {
   const circleN = (c) => people.filter((p) => (p.circles || []).includes(c)).length;
   const noCircleN = people.filter((p) => !(p.circles || []).length).length;
   const relOf = (p) => (p.relationship || '').trim();
-  const relN = (r) => people.filter((p) => relOf(p) === r).length;
+  const relN = (r) => people.filter((p) => relKey(p) === r).length;
   const noRelN = people.filter((p) => !relOf(p)).length;
-  const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', 'FAMILY FRIEND': 'Family Friends', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business' }[r] || r);
+  const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', 'FAMILY FRIEND': 'Family Friends', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business', OTHER: 'Other' }[r] || r);
+  // relationship bucket: standard category, OTHER for custom values, '' for blank
+  const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
   const F = state.peopleFilter;
   const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;
@@ -325,6 +327,7 @@ export async function renderPeople() {
         <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN)}</button></div></div>
       <div class="fgroup"><div class="flabel"><span>Relationship</span>${F.rels.size ? '<button class="mini" data-clear="rels">Clear</button>' : ''}</div>
         <div class="checklist" id="relList">${RELS.map((r) => `<button class="chk ${F.rels.has(r) ? 'on' : ''}" data-rel="${r}" aria-pressed="${F.rels.has(r)}">${chk(0, relLabel(r), relN(r))}</button>`).join('')}
+        <button class="chk ${F.rels.has('OTHER') ? 'on' : ''}" data-rel="OTHER" aria-pressed="${F.rels.has('OTHER')}">${chk(0, 'Other', relN('OTHER'))}</button>
         <button class="chk ${F.rels.has('__none') ? 'on' : ''}" data-rel="__none" aria-pressed="${F.rels.has('__none')}">${chk(0, 'Uncategorized', noRelN)}</button></div></div>
       <div class="fgroup"><div class="flabel"><span>Circles</span>${F.circles.size ? '<button class="mini" data-clear="circles">Clear</button>' : ''}</div>
         <div class="checklist" id="circleList">${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c))}</button>`).join('')}
@@ -339,7 +342,7 @@ export async function renderPeople() {
     const rows = people.filter((p) =>
       (!F.tiers.size || F.tiers.has(p.tier) || (F.tiers.has('__none') && !p.tier)) &&
       (!F.circles.size || (p.circles || []).some((c) => F.circles.has(c)) || (F.circles.has('__none') && !(p.circles || []).length)) &&
-      (!F.rels.size || F.rels.has(relOf(p)) || (F.rels.has('__none') && !relOf(p))) &&
+      (!F.rels.size || F.rels.has(relKey(p)) || (F.rels.has('__none') && !relOf(p))) &&
       (!needle || [p.name, ...(p.aliases || []), p.role, p.dept, p.relationship].some((s) => (s || '').toLowerCase().includes(needle))));
     document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p))).join('') : '<li class="empty">No matches.</li>';
     document.getElementById('count').textContent = rows.length === people.length ? `${people.length} records` : `${rows.length} of ${people.length}`;

@@ -126,10 +126,7 @@ export async function renderEdit(id) {
     <label class="lbl">Tier</label><div class="pills" id="tierSeg" style="flex-wrap:wrap">${['', ...TIERS].map((t) => `<button type="button" class="pill ${(p.tier || '') === t ? 'on' : ''}" data-t="${t}">${t ? `Tier ${t}` : 'None'}</button>`).join('')}</div>
     <label class="lbl">Circles</label><div class="pills" style="flex-wrap:wrap">${allCircles.map((c) => `<button type="button" class="pill ${sel.has(c) ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <div class="grid2">
-      <div><label class="lbl" for="e_relationship">Relationship</label><select class="field" id="e_relationship">
-        <option value="">—</option>
-        ${['PROFESSIONAL', 'FRIEND', 'FAMILY', 'FAMILY FRIEND', 'CUSTOMER', 'PROSPECT', 'BUSINESS'].map((r) => `<option value="${r}"${(p.relationship || '') === r ? ' selected' : ''}>${r}</option>`).join('')}
-      </select></div><div>${inp('role', 'Role')}</div>
+      <div>${inp('relationship', 'Relationship')}</div><div>${inp('role', 'Role')}</div>
       <div>${inp('dept', 'Dept')}</div><div>${inp('org', 'Org')}</div>
       <div>${inp('phone', 'Phone', 'tel')}</div><div>${inp('email', 'Email', 'email')}</div>
       <div>${inp('location', 'Location')}</div><div>${inp('cadence_days', 'Cadence · days', 'number', 'min="1" placeholder="None"')}</div>
@@ -154,7 +151,7 @@ export async function renderEdit(id) {
     if (!id && people.some((x) => x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase()))) {
       toast(`${name} is already in your network`, true); return;
     }
-    const row = { name, tier: tier || null, circles: [...sel], relationship: v('relationship'), role: v('role'), dept: v('dept'), org: v('org'),
+    const row = { name, tier: tier || null, circles: [...sel], relationship: (v('relationship') || '').toUpperCase() || null, role: v('role'), dept: v('dept'), org: v('org'),
       phone: v('phone'), email: v('email'), location: v('location'), cadence_days: n('cadence_days'), how_met: v('how_met'), notes: v('notes'),
       birth_month: n('bm'), birth_day: n('bd'), birth_year: n('by') };
     e.submitter && (e.submitter.disabled = true);
