@@ -117,7 +117,7 @@ export async function renderEdit(id) {
   const people = await loadPeople();
   const p = id ? await q(sb.from('people').select('*').eq('id', id).single()) : { circles: [] };
   panelHead({ kicker: id ? 'Edit record' : 'New record', title: id ? p.name : 'New person' });
-  const allCircles = [...new Set(['Family', 'Friend', 'Mohawk Honda', 'Business', 'Social Media', 'Household', 'Leadership', ...people.flatMap((x) => x.circles || [])])].sort();
+  const allCircles = [...new Set(['Family', 'Family Friend', 'Friend', 'Mohawk Honda', 'Business', 'Customers', 'Social Media', 'Household', 'Leadership', ...people.flatMap((x) => x.circles || [])])].sort();
   const sel = new Set(p.circles || []);
   const inp = (key, label, type = 'text', extra = '') => `<label class="lbl" for="e_${key}">${label}</label><input class="field" id="e_${key}" type="${type}" value="${esc(p[key] ?? '')}" ${extra}>`;
   const root = $pBody;
@@ -128,7 +128,7 @@ export async function renderEdit(id) {
     <div class="grid2">
       <div><label class="lbl" for="e_relationship">Relationship</label><select class="field" id="e_relationship">
         <option value="">—</option>
-        ${['PROFESSIONAL', 'FRIEND', 'FAMILY', 'CUSTOMER', 'PROSPECT', 'BUSINESS'].map((r) => `<option value="${r}"${(p.relationship || '') === r ? ' selected' : ''}>${r}</option>`).join('')}
+        ${['PROFESSIONAL', 'FRIEND', 'FAMILY', 'FAMILY FRIEND', 'CUSTOMER', 'PROSPECT', 'BUSINESS'].map((r) => `<option value="${r}"${(p.relationship || '') === r ? ' selected' : ''}>${r}</option>`).join('')}
       </select></div><div>${inp('role', 'Role')}</div>
       <div>${inp('dept', 'Dept')}</div><div>${inp('org', 'Org')}</div>
       <div>${inp('phone', 'Phone', 'tel')}</div><div>${inp('email', 'Email', 'email')}</div>

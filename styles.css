@@ -9,7 +9,7 @@
   --bg: #0a0c10; --surface: #10141a; --surface-2: #171c24; --text: #edf0f4; --muted: #8b94a5; --line: #232a35;
   --inv-bg: #edf0f4; --inv-text: #0a0c10; --scrim: rgba(0, 0, 0, .6);
   --red: #e0654d; --amber: #d2a24c; --on-accent: #0a0c10; --on-red: #ffffff;
-  --rel-professional: #a08b62; --rel-friend: #7fa07a; --rel-family: #c08b5c; --rel-customer: #d2a24c;
+  --rel-professional: #a08b62; --rel-friend: #7fa07a; --rel-family: #c08b5c; --rel-familyfriend: #a8716a; --rel-customer: #d2a24c;
   --rel-prospect: #d9704a; --rel-business: #7d99a8; --rel-none: #6e6e6e;
   --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
   --serif: "Newsreader", Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
@@ -25,7 +25,7 @@
   --bg: #f4f0e6; --surface: #fffdf7; --surface-2: #eae4d5; --text: #171713; --muted: #6d695f; --line: #c9c1af;
   --inv-bg: #171713; --inv-text: #f4f0e6; --scrim: rgba(23, 23, 19, .32);
   --red: #b84a2b; --amber: #e8a21a; --on-accent: #171713; --on-red: #fffdf7;
-  --rel-professional: #7d6b4a; --rel-friend: #5d8a5a; --rel-family: #a86f3e; --rel-customer: #a87f24;
+  --rel-professional: #7d6b4a; --rel-friend: #5d8a5a; --rel-family: #a86f3e; --rel-familyfriend: #8f5f58; --rel-customer: #a87f24;
   --rel-prospect: #b84a2b; --rel-business: #5a7684; --rel-none: #9a9a9a;
   --r: 14px; --rp: 10px;
   --shadow: 0 18px 55px rgba(40, 35, 24, .16);
@@ -37,7 +37,7 @@
     --bg: #f4f0e6; --surface: #fffdf7; --surface-2: #eae4d5; --text: #171713; --muted: #6d695f; --line: #c9c1af;
     --inv-bg: #171713; --inv-text: #f4f0e6; --scrim: rgba(23, 23, 19, .32);
     --red: #b84a2b; --amber: #e8a21a; --on-accent: #171713; --on-red: #fffdf7;
-  --rel-professional: #7d6b4a; --rel-friend: #5d8a5a; --rel-family: #a86f3e; --rel-customer: #a87f24;
+  --rel-professional: #7d6b4a; --rel-friend: #5d8a5a; --rel-family: #a86f3e; --rel-familyfriend: #8f5f58; --rel-customer: #a87f24;
   --rel-prospect: #b84a2b; --rel-business: #5a7684; --rel-none: #9a9a9a;
     --r: 14px; --rp: 10px;
     --shadow: 0 18px 55px rgba(40, 35, 24, .16);
