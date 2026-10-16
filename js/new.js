@@ -59,7 +59,7 @@ async function newInteraction() {
   document.getElementById('ni_summary').focus();
 }
 
-async function newFollowup() {
+export async function newFollowup() {
   const people = await loadPeople();
   openPanel();
   panelHead({ kicker: 'New', title: 'New follow-up' });

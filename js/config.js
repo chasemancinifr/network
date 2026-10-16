@@ -6,13 +6,16 @@ export const SUPABASE_KEY = 'sb_publishable_ifWhRQP70qDA4tHBy6_AKg_3phy0aFo'; //
 
 export const TIERS = ['A', 'B', 'C', 'D'];
 export const KINDS = ['conversation', 'call', 'message', 'meeting'];
+export const RELS = ['professional', 'friend', 'family', 'customer', 'prospect', 'business'];
 
 export const state = {
   people: null,
   session: null,
-  peopleFilter: { q: '', tiers: new Set(), circles: new Set() },
+  peopleFilter: { q: '', tiers: new Set(), circles: new Set(), rels: new Set() },
   fuTab: 'open',
   taskTab: 'open',
+  actionType: 'all',
+  actionStatus: 'open',
   intKind: 'all',
   intQ: '',
   base: '#/today',
