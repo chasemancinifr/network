@@ -12,6 +12,9 @@ import { newFollowup } from './new.js';
 // ---------- dashboard = the big picture. No action items live here. ----------
 const REL_COLORS = { PROFESSIONAL: 'var(--rel-professional)', FRIEND: 'var(--rel-friend)', FAMILY: 'var(--rel-family)', 'FAMILY FRIEND': 'var(--rel-familyfriend)', CUSTOMER: 'var(--rel-customer)', PROSPECT: 'var(--rel-prospect)', BUSINESS: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
 const REL_LABELS = { PROFESSIONAL: 'work', FRIEND: 'friends', FAMILY: 'family', 'FAMILY FRIEND': 'family friends', CUSTOMER: 'customers', PROSPECT: 'prospects', BUSINESS: 'business', OTHER: 'other', '': 'uncategorized' };
+// relationship bucket: standard category, OTHER for custom values, '' for blank
+const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
+const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', 'FAMILY FRIEND': 'Family Friends', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business', OTHER: 'Other' }[r] || r);
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
@@ -313,9 +316,6 @@ export async function renderPeople() {
   const relOf = (p) => (p.relationship || '').trim();
   const relN = (r) => people.filter((p) => relKey(p) === r).length;
   const noRelN = people.filter((p) => !relOf(p)).length;
-  const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', 'FAMILY FRIEND': 'Family Friends', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business', OTHER: 'Other' }[r] || r);
-  // relationship bucket: standard category, OTHER for custom values, '' for blank
-  const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
   const F = state.peopleFilter;
   const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;
