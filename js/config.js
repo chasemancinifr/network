@@ -6,7 +6,7 @@ export const SUPABASE_KEY = 'sb_publishable_ifWhRQP70qDA4tHBy6_AKg_3phy0aFo'; //
 
 export const TIERS = ['A', 'B', 'C', 'D'];
 export const KINDS = ['conversation', 'call', 'message', 'meeting'];
-export const RELS = ['professional', 'friend', 'family', 'customer', 'prospect', 'business'];
+export const RELS = ['PROFESSIONAL', 'FRIEND', 'FAMILY', 'CUSTOMER', 'PROSPECT', 'BUSINESS'];
 
 export const state = {
   people: null,

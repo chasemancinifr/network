@@ -10,8 +10,8 @@ import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 
 // ---------- dashboard = the big picture. No action items live here. ----------
-const REL_COLORS = { professional: 'var(--rel-professional)', friend: 'var(--rel-friend)', family: 'var(--rel-family)', customer: 'var(--rel-customer)', prospect: 'var(--rel-prospect)', business: 'var(--rel-business)', '': 'var(--rel-none)' };
-const REL_LABELS = { professional: 'work', friend: 'friends', family: 'family', customer: 'customers', prospect: 'prospects', business: 'business', '': 'uncategorized' };
+const REL_COLORS = { PROFESSIONAL: 'var(--rel-professional)', FRIEND: 'var(--rel-friend)', FAMILY: 'var(--rel-family)', CUSTOMER: 'var(--rel-customer)', PROSPECT: 'var(--rel-prospect)', BUSINESS: 'var(--rel-business)', '': 'var(--rel-none)' };
+const REL_LABELS = { PROFESSIONAL: 'work', FRIEND: 'friends', FAMILY: 'family', CUSTOMER: 'customers', PROSPECT: 'prospects', BUSINESS: 'business', '': 'uncategorized' };
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
@@ -25,7 +25,7 @@ export async function renderDashboard() {
   const bdays = upcomingBirthdays(people, 21);
   const relN = {};
   people.forEach((p) => { const r = (p.relationship || '').trim(); relN[r] = (relN[r] || 0) + 1; });
-  const relOrder = ['professional', 'friend', 'family', 'customer', 'prospect', 'business', ''];
+  const relOrder = ['PROFESSIONAL', 'FRIEND', 'FAMILY', 'CUSTOMER', 'PROSPECT', 'BUSINESS', ''];
   const bar = relOrder.filter((r) => relN[r]).map((r) =>
     `<span style="width:${(relN[r] / people.length * 100).toFixed(1)}%;background:${REL_COLORS[r]}" title="${REL_LABELS[r]}: ${relN[r]}"></span>`).join('');
   const legend = relOrder.filter((r) => relN[r]).map((r) =>
@@ -313,7 +313,7 @@ export async function renderPeople() {
   const relOf = (p) => (p.relationship || '').trim();
   const relN = (r) => people.filter((p) => relOf(p) === r).length;
   const noRelN = people.filter((p) => !relOf(p)).length;
-  const relLabel = (r) => r === 'professional' ? 'Work' : r[0].toUpperCase() + r.slice(1) + 's';
+  const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business' }[r] || r);
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
   const F = state.peopleFilter;
   const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;

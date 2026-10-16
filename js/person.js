@@ -128,7 +128,7 @@ export async function renderEdit(id) {
     <div class="grid2">
       <div><label class="lbl" for="e_relationship">Relationship</label><select class="field" id="e_relationship">
         <option value="">—</option>
-        ${['professional', 'friend', 'family', 'customer', 'prospect', 'business'].map((r) => `<option value="${r}"${(p.relationship || '') === r ? ' selected' : ''}>${r}</option>`).join('')}
+        ${['PROFESSIONAL', 'FRIEND', 'FAMILY', 'CUSTOMER', 'PROSPECT', 'BUSINESS'].map((r) => `<option value="${r}"${(p.relationship || '') === r ? ' selected' : ''}>${r}</option>`).join('')}
       </select></div><div>${inp('role', 'Role')}</div>
       <div>${inp('dept', 'Dept')}</div><div>${inp('org', 'Org')}</div>
       <div>${inp('phone', 'Phone', 'tel')}</div><div>${inp('email', 'Email', 'email')}</div>
