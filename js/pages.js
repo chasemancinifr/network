@@ -127,69 +127,6 @@ export async function renderOverdue() {
   bindFollowups(renderOverdue);
   bindTasks(renderOverdue);
 }
-
-// ---------- follow-ups (scheduled) ----------
-export async function renderFollowups() {
-  setHead({ kicker: 'Scheduled', title: 'Follow-ups', tab: 'followups', add: true });
-  const s = state.fuTab;
-  let qq = sb.from('follow_ups').select('id,title,due_date,status,created_at,completed_at,person:people(id,name,tier)').eq('status', s);
-  qq = s === 'closed' ? qq.order('completed_at', { ascending: false, nullsFirst: false }).limit(100)
-    : qq.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
-  const fus = await q(qq);
-  $view.innerHTML = `
-    <div class="pills" role="tablist">${['open', 'parked', 'closed'].map((k) => `<button class="pill ${k === s ? 'on' : ''}" data-seg="${k}" role="tab" aria-selected="${k === s}">${k}</button>`).join('')}</div>
-    <div class="count">${fus.length} ${s === 'closed' ? 'completed (latest 100)' : s}</div>
-    ${fuList(fus, 'Nothing here.')}`;
-  $view.querySelectorAll('[data-seg]').forEach((b) => (b.onclick = () => { state.fuTab = b.dataset.seg; renderFollowups(); }));
-  bindFollowups(renderFollowups);
-}
-
-// ---------- tasks (general to-dos; follow-ups stay separate) ----------
-export async function renderTasks() {
-  setHead({ kicker: 'Action items', title: 'Tasks', tab: 'tasks', add: true });
-  const s = state.taskTab;
-  let tasks;
-  try {
-    let qq = sb.from('tasks').select('id,title,detail,due_date,status,created_at,completed_at,person:people(id,name,tier)').eq('status', s);
-    qq = s === 'done' ? qq.order('completed_at', { ascending: false, nullsFirst: false }).limit(100)
-      : qq.order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
-    tasks = await q(qq);
-  } catch (e) {
-    if (/could not find the table|relation .* does not exist/i.test(e.message || '')) {
-      $view.innerHTML = `<div class="card"><div class="empty">Tasks needs a one-time setup.<br><br>Run <span class="mono">supabase/migrations/0002_create_tasks.sql</span> in Supabase → SQL Editor, then reload.</div></div>`;
-      return;
-    }
-    throw e;
-  }
-  const people = await loadPeople();
-  const t = today();
-  if (s === 'done') {
-    $view.innerHTML = `
-      <div class="cal-bar"><div class="pills" role="tablist">${['open', 'done'].map((k) => `<button class="pill ${k === s ? 'on' : ''}" data-seg="${k}" role="tab" aria-selected="${k === s}">${k}</button>`).join('')}</div>
-        <button class="pill" id="taskAddBtn">+ Task</button></div>
-      <div id="taskSlot"></div>
-      ${sec('Completed', tasks.length)}${taskList(tasks, 'Nothing completed yet.')}`;
-  } else {
-    const late = tasks.filter((x) => x.due_date && x.due_date < t);
-    const todayT = tasks.filter((x) => x.due_date === t);
-    const upcoming = tasks.filter((x) => x.due_date && x.due_date > t);
-    const nodate = tasks.filter((x) => !x.due_date);
-    $view.innerHTML = `
-      <div class="cal-bar"><div class="pills" role="tablist">${['open', 'done'].map((k) => `<button class="pill ${k === s ? 'on' : ''}" data-seg="${k}" role="tab" aria-selected="${k === s}">${k}</button>`).join('')}</div>
-        <button class="pill" id="taskAddBtn">+ Task</button></div>
-      <div id="taskSlot"></div>
-      ${late.length ? `${sec('Overdue', late.length, '', 'red')}${taskList(late, '')}` : ''}
-      ${sec('Today', todayT.length, '', todayT.length ? 'amber' : '')}${todayT.length ? taskList(todayT, '') : ''}
-      ${sec('Upcoming', upcoming.length)}${upcoming.length ? taskList(upcoming, '') : ''}
-      ${sec('No due date', nodate.length)}${nodate.length ? taskList(nodate, '') : ''}
-      ${!tasks.length ? '<div class="card empty">No open tasks. Enjoy the clear.</div>' : ''}`;
-  }
-  const slot = document.getElementById('taskSlot');
-  document.getElementById('taskAddBtn').onclick = () => openTaskForm(slot, { people, onDone: renderTasks });
-  $view.querySelectorAll('[data-seg]').forEach((b) => (b.onclick = () => { state.taskTab = b.dataset.seg; renderTasks(); }));
-  bindTasks(renderTasks);
-}
-
 // ---------- actions: follow-ups + tasks merged, one list ----------
 const badge = (label, cls) => `<span class="typebadge ${cls}">${label}</span>`;
 const withBadge = (html, label, cls) => html.replace('<div class="main">', `${badge(label, cls)}<div class="main">`);
@@ -228,29 +165,6 @@ export async function renderActions() {
   bindFollowups(renderActions);
   bindTasks(renderActions);
 }
-
-// ---------- events ----------
-export async function renderEvents() {
-  setHead({ kicker: 'Scheduled', title: 'Events', tab: 'events', add: true });
-  const [people, evs] = await Promise.all([loadPeople(), loadEvents()]);
-  const t = today();
-  const upcoming = evs.filter((e) => e.event_date >= t);
-  const past = evs.filter((e) => e.event_date < t).reverse();
-  $view.innerHTML = `
-    <div class="cal-bar"><span class="mo">${upcoming.length} upcoming</span>
-      <button class="pill" id="evAddBtn">+ Event</button></div>
-    <div id="evSlot"></div>
-    <div class="events-wrap"><div>
-      ${sec('Upcoming', upcoming.length, '', upcoming.length ? 'amber' : '')}
-      ${evList(upcoming, 'No upcoming events.', true)}
-    </div><div>
-      ${past.length ? `${sec('Past', past.length)}<div class="past">${evList(past, '', true)}</div>` : ''}
-    </div></div>`;
-  const slot = document.getElementById('evSlot');
-  document.getElementById('evAddBtn').onclick = () => openEventForm(slot, { people, onDone: renderEvents });
-  bindEvents(renderEvents, $view, (id) => editEvent(id, slot, renderEvents));
-}
-
 // ---------- recent activity ----------
 function actItem(it) {
   const who = it.person ? `<a href="#/p/${it.person.id}">${esc(it.person.name)}</a>` : '';

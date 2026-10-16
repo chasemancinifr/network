@@ -12,8 +12,6 @@ export const state = {
   people: null,
   session: null,
   peopleFilter: { q: '', tiers: new Set(), circles: new Set(), rels: new Set() },
-  fuTab: 'open',
-  taskTab: 'open',
   actionType: 'all',
   actionStatus: 'open',
   intKind: 'all',
