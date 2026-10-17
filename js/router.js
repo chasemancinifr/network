@@ -1,6 +1,6 @@
 // Router: hash routes → pages or the slide-over panel, plus boot.
 
-import { sb } from './db.js';
+import { sb, probeActionCategory } from './db.js';
 import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
@@ -56,7 +56,7 @@ export function boot() {
   $add.onclick = () => openNewMenu();
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
-    if (!!session !== was) { state.people = null; route(); }
+    if (!!session !== was) { state.people = null; probeActionCategory().then(() => route()); }
   });
 
   let bootDone = false;
@@ -67,6 +67,7 @@ export function boot() {
     try {
       const { data } = await sb.auth.getSession();
       state.session = data.session;
+      await probeActionCategory();
       await route();
     } catch (e) {
       console.error('[boot]', e);

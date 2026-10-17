@@ -37,3 +37,16 @@ export const personTasks = async (id) => {
     .order('due_date', { ascending: true, nullsFirst: false });
   return error ? [] : (data || []);
 };
+// category-column probe: the 0003 migration may not have been run yet.
+// Resolves true when follow_ups.category exists; the app hides all category
+// UI until then, so the app update is safe to push before or after the SQL.
+export async function probeActionCategory() {
+  try {
+    const { error } = await Promise.race([
+      sb.from('follow_ups').select('id,category').limit(1),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('probe timeout')), 6000)),
+    ]);
+    state.hasCategory = !error;
+  } catch { state.hasCategory = false; }
+  return state.hasCategory;
+}

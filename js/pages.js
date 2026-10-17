@@ -3,7 +3,7 @@
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft } from './db.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
-import { state, TIERS, KINDS, RELS } from './config.js';
+import { state, TIERS, KINDS, RELS, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
 import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
@@ -139,32 +139,40 @@ export async function renderActions() {
   setHead({ kicker: 'Follow-ups + tasks', title: 'Actions', tab: 'actions', add: true });
   const s = state.actionStatus; // open | parked | done
   const ty = state.actionType;   // all | fu | task
+  const catSel = 'id,title,due_date,status,created_at,completed_at' + (state.hasCategory ? ',category' : '') + ',person:people(id,name,tier)';
   const [fus, taskRes] = await Promise.all([
-    q(sb.from('follow_ups').select('id,title,due_date,status,created_at,completed_at,person:people(id,name,tier)').limit(300)),
-    sb.from('tasks').select('id,title,due_date,status,created_at,completed_at,person:people(id,name,tier)').limit(300),
+    q(sb.from('follow_ups').select(catSel).limit(300)),
+    sb.from('tasks').select(catSel).limit(300),
   ]);
   const tasks = taskRes.error ? [] : (taskRes.data || []);
   const fuOpen = (f) => f.status === 'open', fuParked = (f) => f.status === 'parked', fuDone = (f) => f.status === 'closed';
   const tOpen = (x) => x.status === 'open', tDone = (x) => x.status === 'done';
   const match = { open: (f) => fuOpen(f), parked: (f) => fuParked(f), done: (f) => fuDone(f) };
   const tmatch = { open: tOpen, parked: () => false, done: tDone };
+  const catMatch = (i) => state.actionCat === 'all' || i.cat === state.actionCat;
   let items = [
-    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
-    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
-  ].filter((i) => ty === 'all' || i.kind === ty);
+    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', cat: f.category || null, due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
+    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', cat: x.category || null, due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
+  ].filter((i) => (ty === 'all' || i.kind === ty) && catMatch(i));
   items.sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : (a.created < b.created ? 1 : -1));
   const nOpen = fus.filter(fuOpen).length + tasks.filter(tOpen).length;
   const nParked = fus.filter(fuParked).length;
   const nDone = fus.filter(fuDone).length + tasks.filter(tDone).length;
   const seg = (k, label, n) => `<button class="pill ${k === s ? 'on' : ''}" data-s="${k}" role="tab" aria-selected="${k === s}">${label} · ${n}</button>`;
   const typ = (k, label) => `<button class="pill ${k === ty ? 'on' : ''}" data-t="${k}">${label}</button>`;
+  const catFilter = state.hasCategory
+    ? `<select class="field" id="actCat" aria-label="Filter by category" style="max-width:170px"><option value="all">All categories</option>${ACTION_CATEGORIES.map((c) => `<option value="${c}"${state.actionCat === c ? ' selected' : ''}>${c}</option>`).join('')}</select>`
+    : '';
   $view.innerHTML = `
     <div class="cal-bar"><div class="pills" role="tablist">${seg('open', 'Open', nOpen)}${seg('parked', 'Parked', nParked)}${seg('done', 'Done', nDone)}</div>
       <button class="pill" id="actAddFu">+ Follow-up</button><button class="pill" id="actAddTask">+ Task</button></div>
     <div class="pills" style="margin:10px 0" role="tablist">${typ('all', 'All')}${typ('fu', 'Follow-ups')}${typ('task', 'Tasks')}</div>
+    ${catFilter ? `<div style="margin:0 0 10px">${catFilter}</div>` : ''}
     <div class="card">${items.length ? `<ul class="list">${items.map((i) => i.html).join('')}</ul>` : '<div class="empty">Nothing here.</div>'}</div>`;
   $view.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { state.actionStatus = b.dataset.s; renderActions(); }));
   $view.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { state.actionType = b.dataset.t; renderActions(); }));
+  const actCat = document.getElementById('actCat');
+  if (actCat) actCat.onchange = (e) => { state.actionCat = e.target.value; renderActions(); };
   document.getElementById('actAddFu').onclick = () => newFollowup();
   document.getElementById('actAddTask').onclick = async () => { const people = await loadPeople(); openPanel(); panelHead({ kicker: 'New', title: 'New task' }); openTaskForm($pBody, { people, onDone: () => { closePanel(); renderActions(); } }); };
   bindFollowups(renderActions);

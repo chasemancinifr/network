@@ -2,7 +2,7 @@
 // follow-up, task, or event.
 
 import { sb, q, loadPeople } from './db.js';
-import { $pBody, openPanel, closePanel, panelHead, toast } from './ui.js';
+import { $pBody, openPanel, closePanel, panelHead, toast, categoryField } from './ui.js';
 import { esc, today } from './utils.js';
 import { KINDS, state } from './config.js';
 import { openTaskForm } from './tasks.js';
@@ -61,6 +61,7 @@ async function newInteraction() {
 
 export async function newFollowup() {
   const people = await loadPeople();
+  const cat = categoryField(null);
   openPanel();
   panelHead({ kicker: 'New', title: 'New follow-up' });
   $pBody.innerHTML = `<form class="card form" id="nff">
@@ -68,14 +69,18 @@ export async function newFollowup() {
     ${personPicker(people, 'nf_person', true)}
     <label class="lbl" for="nf_due">Due date (only if you actually have one)</label><input class="field" type="date" id="nf_due">
     <label class="lbl" for="nf_detail">Detail (optional)</label><textarea class="field" id="nf_detail" style="min-height:70px" placeholder="Anything extra — context, what 'done' looks like"></textarea>
+    ${cat.html}
     <div class="actions" style="margin-top:14px"><button class="btn primary">Add</button><button type="button" class="btn" id="nf_cancel">Back</button></div></form>`;
   document.getElementById('nf_cancel').onclick = () => openNewMenu();
+  cat.bind($pBody);
   document.getElementById('nff').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     try {
-      await q(sb.from('follow_ups').insert({ person_id: document.getElementById('nf_person').value,
+      const row = { person_id: document.getElementById('nf_person').value,
         title: document.getElementById('nf_title').value.trim(), due_date: document.getElementById('nf_due').value || null,
-        detail: document.getElementById('nf_detail').value.trim() || null }));
+        detail: document.getElementById('nf_detail').value.trim() || null };
+      if (state.hasCategory) row.category = cat.get();
+      await q(sb.from('follow_ups').insert(row));
       toast('Added ✓'); closePanel(); route();
     } catch { e.submitter && (e.submitter.disabled = false); }
   };

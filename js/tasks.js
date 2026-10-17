@@ -2,8 +2,9 @@
 // link a person and may carry a due date — neither is required.
 
 import { sb, q, loadPeople } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast } from './ui.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge } from './ui.js';
 import { esc, today } from './utils.js';
+import { state } from './config.js';
 
 export function taskStatus(t) {
   const d = today();
@@ -18,7 +19,7 @@ export function taskItem(t) {
   const ctl = t.status === 'open'
     ? `<button class="check" data-task-done="${t.id}" aria-label="Mark done" title="Mark done"></button>`
     : `<button class="btn small" data-task-reopen="${t.id}">Reopen</button>`;
-  return `<li class="fu ${t.status}">${ctl}<div class="main"><button class="t tlink" data-task-edit="${t.id}">${esc(t.title)}</button><span class="meta">${taskStatus(t)}${who ? `<span>${who}</span>` : ''}</span></div></li>`;
+  return `<li class="fu ${t.status}">${ctl}<div class="main"><button class="t tlink" data-task-edit="${t.id}">${esc(t.title)}</button><span class="meta">${taskStatus(t)}${catBadge(t.category)}${who ? `<span>${who}</span>` : ''}</span></div></li>`;
 }
 export function bindTasks(rerender, root = $view) {
   root.querySelectorAll('[data-task-done]').forEach((b) => (b.onclick = async () => {
@@ -33,6 +34,7 @@ export function bindTasks(rerender, root = $view) {
 export const taskList = (tasks, empty) => `<div class="card">${tasks.length ? `<ul class="list">${tasks.map(taskItem).join('')}</ul>` : `<div class="empty">${empty}</div>`}</div>`;
 // shared add-task form; renders into `slot`, calls onDone after save
 export async function openTaskForm(slot, { personId = null, date = '', people, onDone }) {
+  const cat = categoryField(null);
   slot.innerHTML = `<form class="card form" id="tkf" style="margin-top:12px">
     <label class="lbl">Task</label><input class="field" id="tkt" required placeholder="What needs doing" maxlength="140">
     <div class="grid2">
@@ -40,12 +42,15 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
       <div><label class="lbl">Person (optional)</label><select class="field" id="tkp"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${String(personId ?? '') === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
     </div>
     <label class="lbl">Detail (optional)</label><textarea class="field" id="tkn" style="min-height:70px"></textarea>
+    ${cat.html}
     <div class="actions" style="margin-top:14px"><button class="btn primary">Add task</button><button type="button" class="btn" id="tkx">Cancel</button></div></form>`;
   document.getElementById('tkx').onclick = () => (slot.innerHTML = '');
+  cat.bind(slot);
   document.getElementById('tkf').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('tkt').value.trim(), due_date: document.getElementById('tkd').value || null,
       person_id: document.getElementById('tkp').value || null, detail: document.getElementById('tkn').value.trim() || null };
+    if (state.hasCategory) row.category = cat.get();
     try { await q(sb.from('tasks').insert(row)); toast('Task added ✓'); slot.innerHTML = ''; onDone(); }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
@@ -54,9 +59,11 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
 
 // ---------- edit task (panel) ----------
 export async function editTask(taskId, rerender) {
-  const t = await q(sb.from('tasks').select('id,title,detail,due_date,status,person_id').eq('id', taskId).single());
+  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '');
+  const t = await q(sb.from('tasks').select(fields).eq('id', taskId).single());
   if (!t) return;
   const people = await loadPeople();
+  const cat = categoryField(t.category);
   openPanel();
   const who = people.find((p) => p.id === t.person_id);
   panelHead({ kicker: who ? who.name : 'Task', title: 'Edit task' });
@@ -66,6 +73,7 @@ export async function editTask(taskId, rerender) {
     <div class="grid2"><div><label class="lbl" for="te_due">Due date</label><input class="field" id="te_due" type="date" value="${esc(t.due_date || '')}"></div>
     <div><label class="lbl" for="te_person">Person (optional)</label><select class="field" id="te_person"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${p.id === t.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
     <label class="lbl" for="te_detail">Detail (optional)</label><textarea class="field" id="te_detail" style="min-height:90px">${esc(t.detail || '')}</textarea>
+    ${cat.html}
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
   document.getElementById('te_cancel').onclick = () => dismissPanel();
   document.getElementById('te_del').onclick = async (e) => {
@@ -73,10 +81,12 @@ export async function editTask(taskId, rerender) {
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
     b.disabled = true; await q(sb.from('tasks').delete().eq('id', taskId)); toast('Deleted'); closePanel(); rerender();
   };
+  cat.bind(root);
   document.getElementById('tef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('te_title').value.trim(), detail: document.getElementById('te_detail').value.trim() || null,
       due_date: document.getElementById('te_due').value || null, person_id: document.getElementById('te_person').value || null };
+    if (state.hasCategory) row.category = cat.get();
     try { await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓'); closePanel(); rerender(); }
     catch { e.submitter && (e.submitter.disabled = false); }
   };

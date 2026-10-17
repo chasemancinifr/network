@@ -1,8 +1,9 @@
 // Follow-ups: person-centric nudges. Rows, bindings, editor, next-touch prompts.
 
 import { sb, q, loadPeople } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast } from './ui.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge } from './ui.js';
 import { esc, today, daysBetween, upcomingBirthdays } from './utils.js';
+import { state } from './config.js';
 
 export function fuStatus(f) {
   const t = today();
@@ -19,7 +20,7 @@ export function fuItem(f, sub = '') {
     ? `<button class="check" data-done="${f.id}" aria-label="Mark done" title="Mark done"></button>`
     : `<button class="btn small" data-reopen="${f.id}">Reopen</button>`;
   const park = f.status === 'open' ? `<button class="btn small" data-park="${f.id}">Park</button>` : '';
-  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${who ? `<span>${who}</span>` : ''}</span>${sub}</div>${park}</li>`;
+  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${catBadge(f.category)}${who ? `<span>${who}</span>` : ''}</span>${sub}</div>${park}</li>`;
 }
 export function bindFollowups(rerender, root = $view) {
   root.querySelectorAll('[data-done]').forEach((b) => (b.onclick = async () => {
@@ -61,9 +62,11 @@ export const ntouch = (text) => `<div class="ntouch"><span class="nt-k">Next tou
 
 // ---------- edit follow-up (panel) ----------
 export async function editFollowup(fuId, rerender) {
-  const f = await q(sb.from('follow_ups').select('id,title,detail,due_date,status,person_id').eq('id', fuId).single());
+  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '');
+  const f = await q(sb.from('follow_ups').select(fields).eq('id', fuId).single());
   if (!f) return;
   const people = await loadPeople();
+  const cat = categoryField(f.category);
   openPanel();
   const who = people.find((p) => p.id === f.person_id);
   panelHead({ kicker: who ? who.name : 'Follow-up', title: 'Edit follow-up' });
@@ -73,15 +76,18 @@ export async function editFollowup(fuId, rerender) {
     <div class="grid2"><div><label class="lbl" for="fe_due">Due date</label><input class="field" id="fe_due" type="date" value="${esc(f.due_date || '')}"></div>
     <div><label class="lbl" for="fe_person">Person</label><select class="field" id="fe_person">${people.map((p) => `<option value="${p.id}"${p.id === f.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
     <label class="lbl" for="fe_detail">Detail (optional)</label><textarea class="field" id="fe_detail" style="min-height:90px" placeholder="Anything extra — context, what 'done' looks like">${esc(f.detail || '')}</textarea>
+    ${cat.html}
     <label class="lbl">Status</label><div class="pills" id="feStatus">${['open', 'parked', 'closed'].map((s) => `<button type="button" class="pill${f.status === s ? ' on' : ''}" data-s="${s}">${s}</button>`).join('')}</div>
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button></div></form>`;
   let status = f.status;
   root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  cat.bind(root);
   document.getElementById('fe_cancel').onclick = () => dismissPanel();
   document.getElementById('fef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('fe_title').value.trim(), detail: document.getElementById('fe_detail').value.trim() || null,
       due_date: document.getElementById('fe_due').value || null, person_id: document.getElementById('fe_person').value, status };
+    if (state.hasCategory) row.category = cat.get();
     if (status === 'closed' && f.status !== 'closed') row.completed_at = new Date().toISOString();
     if (status !== 'closed' && f.status === 'closed') row.completed_at = null;
     try { await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓'); closePanel(); rerender(); }

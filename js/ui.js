@@ -1,7 +1,7 @@
 // Chrome: DOM refs, page header, slide-over panel, toast, visual primitives, theme.
 // Presentation only — no data fetching here.
 
-import { state } from './config.js';
+import { state, ACTION_CATEGORIES } from './config.js';
 import { esc, fmtDate, ago, dueInfo, today } from './utils.js';
 
 export const $view = document.getElementById('view');
@@ -105,3 +105,23 @@ $themeBtn.onclick = () => {
   applyTheme(next); toast(`Theme · ${next}`);
 };
 applyTheme(getTheme());
+
+// ---------- action categories (follow-ups + tasks) ----------
+// Pill selector for the follow-up/task forms. Renders nothing until the 0003
+// migration has added the category column (state.hasCategory, probed at boot).
+export function categoryField(selected) {
+  if (!state.hasCategory) return { html: '', bind() {}, get: () => null };
+  let sel = ACTION_CATEGORIES.includes(selected) ? selected : null;
+  return {
+    html: `<label class="lbl">Category</label><div class="pills" data-catpills>${ACTION_CATEGORIES.map((c) => `<button type="button" class="pill${sel === c ? ' on' : ''}" data-c="${c}">${c}</button>`).join('')}</div>`,
+    bind(root) {
+      root.querySelectorAll('[data-catpills] [data-c]').forEach((b) => (b.onclick = () => {
+        sel = b.dataset.c;
+        root.querySelectorAll('[data-catpills] [data-c]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    },
+    get: () => sel,
+  };
+}
+// small badge for action rows; empty when uncategorized
+export const catBadge = (c) => (c ? `<span class="typebadge">${esc(c)}</span>` : '');
