@@ -290,6 +290,8 @@ details.more .notes { padding-top: 0; }
 .cal-day .dots { display: flex; gap: 3px; height: 5px; }
 .cal-day .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
 .cal-day .dots i.red { background: var(--red); } .cal-day .dots i.amber { background: var(--amber); }
+.cal-day .dots i.past { background: transparent; border: 1.5px solid var(--muted); width: 4px; height: 4px; }
+li.fu.past { opacity: .75; } li.fu.past .t a { color: var(--muted); }
 @media (min-width: 900px) { .cal-day { aspect-ratio: 4 / 3; } }
 
 /* ---------- misc ---------- */

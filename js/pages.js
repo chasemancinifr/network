@@ -453,7 +453,8 @@ export async function renderPeople() {
 // ---------- calendar ----------
 export async function renderCalendar() {
   setHead({ kicker: 'Schedule', title: 'Calendar', tab: 'calendar', add: true });
-  const [people, fus, evs, tasks] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft()]);
+  const [people, fus, evs, tasks, ints] = await Promise.all([loadPeople(), openFollowups(), loadEvents(), openTasksSoft(),
+    q(sb.from('interactions').select('id,kind,happened_at,summary,duration_min,person:people(id,name)').order('happened_at', { ascending: false }).limit(2000))]);
   const t = today();
   if (!state.cal) state.cal = { y: +t.slice(0, 4), m: +t.slice(5, 7) - 1, sel: t };
   const C = state.cal;
@@ -464,6 +465,7 @@ export async function renderCalendar() {
     fus.filter((f) => f.due_date).forEach((f) => add(f.due_date, { kind: 'fu', f, cls: f.due_date < t ? 'red' : f.due_date === t ? 'amber' : 'gray' }));
     tasks.filter((x) => x.due_date).forEach((x) => add(x.due_date, { kind: 'task', t: x, cls: x.due_date < t ? 'red' : x.due_date === t ? 'amber' : 'gray' }));
     evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber' }));
+    ints.forEach((i) => { if (i.happened_at) add(i.happened_at.slice(0, 10), { kind: 'int', i, cls: 'past' }); });
     people.forEach((p) => {
       if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray' });
       if (p.cadence_days) {
@@ -484,10 +486,11 @@ export async function renderCalendar() {
       cells.push(`<button class="cal-day ${k === t ? 'today' : ''} ${k === C.sel ? 'sel' : ''}" data-day="${k}" aria-label="${k}${items.length ? `, ${items.length} items` : ''}"><span class="n">${d}</span><span class="dots">${dots}</span></button>`);
     }
     while (cells.length % 7) cells.push('<div class="cal-day out"></div>');
-    const items = (ev[C.sel] || []).sort((a, b) => ({ red: 0, amber: 1, gray: 2 }[a.cls] - { red: 0, amber: 1, gray: 2 }[b.cls]));
+    const items = (ev[C.sel] || []).sort((a, b) => ({ red: 0, amber: 1, gray: 2, past: 3 }[a.cls] - { red: 0, amber: 1, gray: 2, past: 3 }[b.cls]));
     const fuItems = items.filter((e) => e.kind === 'fu').map((e) => e.f);
     const taskItems = items.filter((e) => e.kind === 'task').map((e) => e.t);
     const evItems = items.filter((e) => e.kind === 'ev').map((e) => e.e);
+    const intItems = items.filter((e) => e.kind === 'int').map((e) => e.i);
     const pItems = items.filter((e) => e.kind === 'bday' || e.kind === 'cad');
     const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     // all events: upcoming first (grouped by month), then past
@@ -513,6 +516,10 @@ export async function renderCalendar() {
       ${pItems.length ? `<ul class="list card">${pItems.map((e) => personRow(e.p, e.kind === 'bday' ? st(C.sel === t ? 'amber' : 'gray', 'Birthday') : st(e.cls, e.cls === 'red' ? dueInfo(e.p).label : 'Check-in due'))).join('')}</ul>` : ''}
       ${fuItems.length ? `<div style="margin-top:${(pItems.length || evItems.length) ? 8 : 0}px">${fuList(fuItems, '')}</div>` : ''}
       ${taskItems.length ? `<div style="margin-top:${(pItems.length || evItems.length || fuItems.length) ? 8 : 0}px">${taskList(taskItems, '')}</div>` : ''}
+      ${intItems.length ? `<div style="margin-top:12px"><div class="flabel"><span>Past interactions</span></div><ul class="list card">${intItems.map((i) => {
+        const who = i.person ? `<a href="#/p/${i.person.id}">${esc(i.person.name)}</a>` : '<span class="meta">No person linked</span>';
+        return `<li class="fu past"><div class="main"><span class="t">${who}</span><span class="meta">${st('gray', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div></li>`;
+      }).join('')}</ul></div>` : ''}
       ${sec('Upcoming events', upcomingEvs.length, '', upcomingEvs.length ? 'amber' : '')}
       ${monthGroups.length ? monthGroups.map((g) => `<div class="flabel" style="margin-top:10px"><span>${esc(g.label)}</span></div>${evList(g.evs, '', true)}`).join('') : '<div class="card empty">No upcoming events.</div>'}
       ${pastEvs.length ? `${sec('Past events', pastEvs.length)}${evList(pastEvs.slice(0, 12), '', true)}` : ''}`;
