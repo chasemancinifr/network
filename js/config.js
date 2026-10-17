@@ -6,7 +6,7 @@ export const SUPABASE_KEY = 'sb_publishable_ifWhRQP70qDA4tHBy6_AKg_3phy0aFo'; //
 
 export const TIERS = ['A', 'B', 'C', 'D'];
 export const KINDS = ['conversation', 'call', 'message', 'meeting'];
-export const RELS = ['PROFESSIONAL', 'FRIEND', 'FAMILY', 'FAMILY FRIEND', 'CUSTOMER', 'PROSPECT', 'BUSINESS'];
+export const RELS = ['Professional', 'Friend', 'Family', 'Family Friend', 'Customer', 'Prospect', 'Business'];
 // action categories for follow-ups + tasks (the Actions tab)
 export const ACTION_CATEGORIES = ['sales', 'networking', 'business', 'social media', 'family', 'birthday', 'dining', 'travel', 'finance', 'health', 'general'];
 

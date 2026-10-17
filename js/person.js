@@ -2,7 +2,7 @@
 
 import { sb, q, loadPeople, personTasks } from './db.js';
 import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast } from './ui.js';
-import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc } from './utils.js';
+import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
 import { taskList, bindTasks, openTaskForm } from './tasks.js';
@@ -151,7 +151,7 @@ export async function renderEdit(id) {
     if (!id && people.some((x) => x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase()))) {
       toast(`${name} is already in your network`, true); return;
     }
-    const row = { name, tier: tier || null, circles: [...sel], relationship: (v('relationship') || '').toUpperCase() || null, role: v('role'), dept: v('dept'), org: v('org'),
+    const row = { name, tier: tier || null, circles: [...sel], relationship: titleCase(v('relationship')) || null, role: v('role'), dept: v('dept'), org: v('org'),
       phone: v('phone'), email: v('email'), location: v('location'), cadence_days: n('cadence_days'), how_met: v('how_met'), notes: v('notes'),
       birth_month: n('bm'), birth_day: n('bd'), birth_year: n('by') };
     e.submitter && (e.submitter.disabled = true);

@@ -10,11 +10,11 @@ import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 
 // ---------- dashboard = the big picture. No action items live here. ----------
-const REL_COLORS = { PROFESSIONAL: 'var(--rel-professional)', FRIEND: 'var(--rel-friend)', FAMILY: 'var(--rel-family)', 'FAMILY FRIEND': 'var(--rel-familyfriend)', CUSTOMER: 'var(--rel-customer)', PROSPECT: 'var(--rel-prospect)', BUSINESS: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
-const REL_LABELS = { PROFESSIONAL: 'work', FRIEND: 'friends', FAMILY: 'family', 'FAMILY FRIEND': 'family friends', CUSTOMER: 'customers', PROSPECT: 'prospects', BUSINESS: 'business', OTHER: 'other', '': 'uncategorized' };
+const REL_COLORS = { Professional: 'var(--rel-professional)', Friend: 'var(--rel-friend)', Family: 'var(--rel-family)', 'Family Friend': 'var(--rel-familyfriend)', Customer: 'var(--rel-customer)', Prospect: 'var(--rel-prospect)', Business: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
+const REL_LABELS = { Professional: 'work', Friend: 'friends', Family: 'family', 'Family Friend': 'family friends', Customer: 'customers', Prospect: 'prospects', Business: 'business', OTHER: 'other', '': 'uncategorized' };
 // relationship bucket: standard category, OTHER for custom values, '' for blank
 const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
-const relLabel = (r) => ({ PROFESSIONAL: 'Work', FRIEND: 'Friends', FAMILY: 'Family', 'FAMILY FRIEND': 'Family Friends', CUSTOMER: 'Customers', PROSPECT: 'Prospects', BUSINESS: 'Business', OTHER: 'Other' }[r] || r);
+const relLabel = (r) => ({ Professional: 'Work', Friend: 'Friends', Family: 'Family', 'Family Friend': 'Family Friends', Customer: 'Customers', Prospect: 'Prospects', Business: 'Business', OTHER: 'Other' }[r] || r);
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
