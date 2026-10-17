@@ -358,3 +358,12 @@ li.fu{position:relative}
 li.fu .typebadge{position:absolute;top:12px;right:12px}
 li.fu .meta .typebadge{position:static;padding:1px 7px}
 li.fu .main{padding-right:86px}
+
+/* Recent: actor badges (Chase / Muse / Claude) */
+.typebadge.actor-chase{color:var(--rel-friend)}
+.typebadge.actor-muse{color:var(--rel-business)}
+.typebadge.actor-claude{color:var(--rel-prospect)}
+/* mark-done checkbox: 24px visual, 44px tap area */
+.check{width:24px;height:24px;position:relative}
+.check::after{content:"";position:absolute;inset:-10px}
+:root{--on-amber:var(--on-accent)}

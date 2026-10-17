@@ -141,8 +141,8 @@ export async function renderActions() {
   const ty = state.actionType;   // all | fu | task
   const catSel = 'id,title,due_date,status,created_at,completed_at' + (state.hasCategory ? ',category' : '') + ',person:people(id,name,tier)';
   const [fus, taskRes] = await Promise.all([
-    q(sb.from('follow_ups').select(catSel).limit(300)),
-    sb.from('tasks').select(catSel).limit(300),
+    q(sb.from('follow_ups').select(catSel).order('created_at', { ascending: false }).limit(2000)),
+    sb.from('tasks').select(catSel).order('created_at', { ascending: false }).limit(2000),
   ]);
   const tasks = taskRes.error ? [] : (taskRes.data || []);
   const fuOpen = (f) => f.status === 'open', fuParked = (f) => f.status === 'parked', fuDone = (f) => f.status === 'closed';
@@ -151,10 +151,11 @@ export async function renderActions() {
   const tmatch = { open: tOpen, parked: () => false, done: tDone };
   const catMatch = (i) => state.actionCat === 'all' || i.cat === state.actionCat;
   let items = [
-    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', cat: f.category || null, due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
-    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', cat: x.category || null, due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
+    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', cat: f.category || null, due: f.due_date, created: f.created_at, completed: f.completed_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
+    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', cat: x.category || null, due: x.due_date, created: x.created_at, completed: x.completed_at, html: withBadge(taskItem(x), 'task', 'task') })),
   ].filter((i) => (ty === 'all' || i.kind === ty) && catMatch(i));
-  items.sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : (a.created < b.created ? 1 : -1));
+  if (s === 'done') items.sort((a, b) => ((a.completed || '') < (b.completed || '') ? 1 : -1)); // newest finished first
+  else items.sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : (a.created < b.created ? 1 : -1));
   const nOpen = fus.filter(fuOpen).length + tasks.filter(tOpen).length;
   const nParked = fus.filter(fuParked).length;
   const nDone = fus.filter(fuDone).length + tasks.filter(tDone).length;
@@ -178,7 +179,85 @@ export async function renderActions() {
   bindFollowups(renderActions);
   bindTasks(renderActions);
 }
-// ---------- recent activity ----------
+// ---------- recent activity: who did what, from the activity log ----------
+// Reads the activity_feed view (0004 migration): a slim projection of
+// activity_log with the actor. Falls back to the old reconstructed feed if
+// the view isn't there.
+const ACTORS = { chase: 'Chase', muse: 'Muse', claude: 'Claude', 'claude-import': 'Claude' };
+const actorOf = (a) => ACTORS[String(a || '').toLowerCase()] || '';
+const actorBadge = (a) => { const n = actorOf(a); return n ? `<span class="typebadge actor-${n.toLowerCase()}">${n}</span>` : ''; };
+const FIELD_LABELS = { cadence_days: 'cadence', birth_month: 'birthday', birth_day: 'birthday', birth_year: 'birthday', muse_notes: "Muse's notes",
+  how_met: 'how met', due_date: 'due date', person_id: 'person', event_date: 'date', event_time: 'time', duration_min: 'minutes', happened_at: 'date' };
+const SKIP_FIELDS = new Set(['completed_at', 'last_contact', 'created_at', 'created_by', 'legacy_id', 'vault_path', 'status']);
+const fieldList = (ch) => [...new Set((ch || []).filter((k) => !SKIP_FIELDS.has(k)).map((k) => FIELD_LABELS[k] || k.replace(/_/g, ' ')))];
+// drop log rows that aren't real activity: last_contact bumps from the
+// interaction trigger, and no-op updates
+const isNoise = (r) => r.action === 'update' && !(r.changed || []).some((k) => k !== 'last_contact') ;
+function feedItem(r, names) {
+  const pid = r.entity === 'people' ? r.entity_id : r.person_id;
+  const pname = r.entity === 'people' ? r.title : names[pid];
+  const who = pid && pname ? `<a href="#/p/${pid}">${esc(pname)}</a>` : '';
+  const ttl = r.title ? `'${esc(r.title)}'` : '';
+  const fields = fieldList(r.changed);
+  const fx = fields.length ? ` · ${esc(fields.slice(0, 3).join(', '))}${fields.length > 3 ? '…' : ''}` : '';
+  const statusMove = r.action === 'update' && r.old_status !== r.new_status;
+  let desc = '', kind = '', sub = '';
+  if (r.entity === 'people') {
+    kind = st('gray', 'Person');
+    if (r.action === 'insert') desc = `Added ${who || ttl}`;
+    else if ((r.changed || []).includes('archived_at')) desc = `${r.archived_at ? 'Archived' : 'Restored'} ${who || ttl}`;
+    else desc = `Updated ${who || ttl}${fx}`;
+  } else if (r.entity === 'follow_ups' || r.entity === 'tasks') {
+    const noun = r.entity === 'tasks' ? 'task' : 'follow-up';
+    kind = st('gray', r.entity === 'tasks' ? 'Task' : 'Follow-up');
+    if (r.action === 'insert') desc = `New ${noun} ${ttl}`;
+    else if (r.action === 'delete') desc = `Deleted ${noun} ${ttl}`;
+    else if (statusMove && (r.new_status === 'closed' || r.new_status === 'done')) { desc = `Completed ${ttl}`; kind = st('ring', 'Done'); }
+    else if (statusMove && r.new_status === 'parked') desc = `Parked ${ttl}`;
+    else if (statusMove && r.new_status === 'open') desc = `Reopened ${ttl}`;
+    else desc = `Edited ${noun} ${ttl}${fx}`;
+    if (who) desc += ` · ${who}`;
+  } else if (r.entity === 'interactions') {
+    kind = st('amber', 'Interaction');
+    desc = `${r.action === 'insert' ? 'Logged' : r.action === 'delete' ? 'Removed' : 'Edited'} ${esc(r.kind || 'interaction')}${who ? ` with ${who}` : ''}`;
+    if (r.summary && r.action !== 'delete') sub = `<span>${esc(r.summary.slice(0, 140))}</span>`;
+  } else if (r.entity === 'events') {
+    kind = st('gray', 'Event');
+    desc = r.action === 'insert' ? `Scheduled ${ttl}${r.event_date ? ` for ${monoDate(r.event_date)}` : ''}` : `${r.action === 'delete' ? 'Deleted' : 'Edited'} event ${ttl}`;
+    if (who) desc += ` · ${who}`;
+  } else { kind = st('gray', r.entity); desc = `${r.action} ${ttl}`; }
+  return `<li class="fu"><div class="main"><span class="t">${desc}</span><span class="meta">${actorBadge(r.actor)}${kind}<span>${agoShort(r.created_at)}</span>${sub}</span></div></li>`;
+}
+export async function renderRecent() {
+  setHead({ kicker: 'Activity', title: 'Recent', tab: 'recent', add: true });
+  const [res, people] = await Promise.all([
+    sb.from('activity_feed').select('id,created_at,actor,action,entity,entity_id,person_id,title,summary,kind,event_date,old_status,new_status,archived_at,changed')
+      .order('created_at', { ascending: false }).limit(400),
+    loadPeople(),
+  ]);
+  if (res.error) return renderRecentLegacy();
+  const t = today();
+  const names = Object.fromEntries(people.map((p) => [p.id, p.name]));
+  const rows = (res.data || []).filter((r) => !isNoise(r));
+  const A = state.recentActor || 'all';
+  const n = (a) => rows.filter((r) => actorOf(r.actor) === a).length;
+  const shown = rows.filter((r) => A === 'all' || actorOf(r.actor) === A).slice(0, 150);
+  const groups = [];
+  shown.forEach((r) => {
+    const d = feedDay(r.created_at);
+    const g = groups[groups.length - 1];
+    if (g && g.d === d) g.items.push(r); else groups.push({ d, items: [r] });
+  });
+  const pill = (k, label) => `<button class="pill ${k === A ? 'on' : ''}" data-actor="${k}" role="tab" aria-selected="${k === A}">${label}</button>`;
+  $view.innerHTML = `
+    <div class="pills" role="tablist" style="margin-bottom:12px;flex-wrap:wrap">${pill('all', 'All')}${pill('Chase', `Chase · ${n('Chase')}`)}${pill('Muse', `Muse · ${n('Muse')}`)}${pill('Claude', `Claude · ${n('Claude')}`)}</div>
+    ${groups.length ? `<div class="recent-wrap">${groups.map((g) => `
+    <div class="daygroup"><div class="daydiv">${g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
+    <div class="card"><ul class="list">${g.items.map((r) => feedItem(r, names)).join('')}</ul></div></div>`).join('')}</div>`
+    : '<div class="card empty">No activity yet.</div>'}`;
+  $view.querySelectorAll('[data-actor]').forEach((b) => (b.onclick = () => { state.recentActor = b.dataset.actor; renderRecent(); }));
+}
+// legacy feed: reconstructed from row timestamps, no actor (fallback only)
 function actItem(it) {
   const who = it.person ? `<a href="#/p/${it.person.id}">${esc(it.person.name)}</a>` : '';
   let desc = '', kind = '';
@@ -190,7 +269,7 @@ function actItem(it) {
   const sub = it.k === 'interaction' && it.i.summary ? `<span>${esc(it.i.summary.slice(0, 140))}</span>` : '';
   return `<li class="fu"><div class="main"><span class="t">${desc}</span><span class="meta">${kind}<span>${agoShort(it.ts)}</span>${sub}</span></div></li>`;
 }
-export async function renderRecent() {
+async function renderRecentLegacy() {
   setHead({ kicker: 'Activity', title: 'Recent', tab: 'recent', add: true });
   const t = today();
   const [ints, fus, ppl, evs] = await Promise.all([

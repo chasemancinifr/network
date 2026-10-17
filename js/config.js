@@ -23,4 +23,5 @@ export const state = {
   base: '#/today',
   baseRendered: false,
   cal: null,
+  recentActor: 'all', // Recent tab actor filter: all | Chase | Muse | Claude
 };

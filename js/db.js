@@ -20,7 +20,7 @@ export async function loadPeople(force) {
   return state.people;
 }
 // the one query for open follow-ups (unchanged from v1); reused by Today, Overdue and Calendar
-export const openFollowups = () => q(sb.from('follow_ups').select('id,title,due_date,status,created_at,person:people(id,name,tier)').eq('status', 'open')
+export const openFollowups = () => q(sb.from('follow_ups').select('id,title,due_date,status,created_at' + (state.hasCategory ? ',category' : '') + ',person:people(id,name,tier)').eq('status', 'open')
   .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));
 // scheduled events: dated things on the calendar (birthday party, dinner, flight) —
 // deliberately separate from follow-ups, which are action items
@@ -29,7 +29,8 @@ export const loadEvents = () => q(sb.from('events').select('id,title,event_date,
 // raw (no toast) variant for pages that merely fold tasks in — the table may
 // not exist yet if the 0002 migration hasn't been run
 export const openTasksSoft = async () => {
-  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,person:people(id,name,tier)').eq('status', 'open');
+  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,created_at' + (state.hasCategory ? ',category' : '') + ',person:people(id,name,tier)').eq('status', 'open')
+    .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false });
   return error ? [] : (data || []);
 };
 export const personTasks = async (id) => {

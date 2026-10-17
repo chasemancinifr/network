@@ -59,6 +59,7 @@ export function upcomingBirthdays(people, days) {
   }).filter((x) => x.in <= days).sort((a, b) => a.in - b.in);
 }
 export function agoShort(ts) {
+  if (String(ts || '').length === 10) return ago(String(ts));
   const ms = Date.now() - new Date(ts).getTime();
   if (!(ms >= 0)) return fmtDate(ts);
   const m = Math.floor(ms / 60000);

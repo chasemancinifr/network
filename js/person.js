@@ -1,7 +1,7 @@
 // Person panel: full record view + add/edit form.
 
 import { sb, q, loadPeople, personTasks } from './db.js';
-import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast } from './ui.js';
+import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
@@ -83,22 +83,29 @@ export async function renderPerson(id) {
     document.getElementById('lf').onsubmit = async (e) => {
       e.preventDefault(); e.submitter && (e.submitter.disabled = true);
       const dm = parseInt(document.getElementById('dm').value, 10);
-      await q(sb.from('interactions').insert({ person_id: id, kind: document.getElementById('k').value, happened_at: document.getElementById('dt').value,
-        summary: document.getElementById('sm').value.trim(), duration_min: Number.isFinite(dm) ? dm : null }));
-      toast('Logged ✓'); state.people = null; renderPerson(id);
+      try {
+        await q(sb.from('interactions').insert({ person_id: id, kind: document.getElementById('k').value, happened_at: document.getElementById('dt').value,
+          summary: document.getElementById('sm').value.trim(), duration_min: Number.isFinite(dm) ? dm : null }));
+        toast('Logged ✓'); state.people = null; renderPerson(id);
+      } catch { e.submitter && (e.submitter.disabled = false); }
     };
     document.getElementById('sm').focus();
   };
   document.getElementById('fuBtn').onclick = () => {
+    const cat = categoryField(null);
     slot.innerHTML = `<form class="card form" id="ff" style="margin-top:12px">
       <label class="lbl">Follow-up</label><input class="field" id="ft" required placeholder="What needs to happen">
       <label class="lbl">Due date (only if you actually have one)</label><input class="field" type="date" id="fd">
+      ${cat.html}
       <div class="actions" style="margin-top:14px"><button class="btn primary">Add</button><button type="button" class="btn" id="cx">Cancel</button></div></form>`;
     document.getElementById('cx').onclick = () => (slot.innerHTML = '');
+    cat.bind(slot);
     document.getElementById('ff').onsubmit = async (e) => {
       e.preventDefault(); e.submitter && (e.submitter.disabled = true);
-      await q(sb.from('follow_ups').insert({ person_id: id, title: document.getElementById('ft').value.trim(), due_date: document.getElementById('fd').value || null }));
-      toast('Added ✓'); renderPerson(id);
+      const row = { person_id: id, title: document.getElementById('ft').value.trim(), due_date: document.getElementById('fd').value || null };
+      if (state.hasCategory) row.category = cat.get();
+      try { await q(sb.from('follow_ups').insert(row)); toast('Added ✓'); renderPerson(id); }
+      catch { e.submitter && (e.submitter.disabled = false); }
     };
     document.getElementById('ft').focus();
   };
@@ -148,7 +155,7 @@ export async function renderEdit(id) {
   document.getElementById('ef').onsubmit = async (e) => {
     e.preventDefault();
     const name = v('name');
-    if (!id && people.some((x) => x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase()))) {
+    if (people.some((x) => x.id !== id && x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase()))) {
       toast(`${name} is already in your network`, true); return;
     }
     const row = { name, tier: tier || null, circles: [...sel], relationship: titleCase(v('relationship')) || null, role: v('role'), dept: v('dept'), org: v('org'),
