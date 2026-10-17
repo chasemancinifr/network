@@ -356,4 +356,5 @@ li > .ntouch { margin: 0 12px 12px; }
 .note{font-size:12.5px;color:var(--muted);line-height:1.5}
 li.fu{position:relative}
 li.fu .typebadge{position:absolute;top:12px;right:12px}
+li.fu .meta .typebadge{position:static;padding:1px 7px}
 li.fu .main{padding-right:86px}
