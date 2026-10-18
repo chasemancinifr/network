@@ -5,7 +5,10 @@ import DOMPurify from '../purify.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const today = () => new Date().toLocaleDateString('en-CA');
-export const titleCase = (s) => String(s || '').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+export const titleCase = (s) => String(s || '').toLowerCase()
+  .replace(/\b\w/g, (c) => c.toUpperCase())
+  // possessive/contraction 's stays lowercase ("women's"), but name prefixes keep theirs ("O'Brien")
+  .replace(/'([A-Z])(?![a-z])/g, (_, c) => `'${c.toLowerCase()}`);
 export const md = (s) => DOMPurify.sanitize(marked.parse(String(s || '').replace(/\[\[([^\]|]+)(\|[^\]]+)?\]\]/g, (_, a, b) => (b ? b.slice(1) : a))));
 
 export function fmtDate(d) {
