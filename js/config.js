@@ -18,6 +18,7 @@ export const state = {
   actionType: 'all',
   actionStatus: 'open',
   actionCat: 'all', // category filter; 'all' or one of ACTION_CATEGORIES
+  actionImpSort: 'none', // importance sort on the Actions tab: 'none' | 'desc' (urgent first) | 'asc' (neutral first)
   hasCategory: false, // set true at boot once the 0003 migration's column exists
   hasImportance: false, // set true at boot once the 0004 migration's column exists
   intKind: 'all',

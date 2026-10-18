@@ -1,7 +1,7 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
-import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot } from './ui.js';
+import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
@@ -186,11 +186,17 @@ export async function renderActions() {
   const tmatch = { open: tOpen, parked: () => false, done: tDone };
   const catMatch = (i) => state.actionCat === 'all' || i.cat === state.actionCat;
   let items = [
-    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', cat: f.category || null, due: f.due_date, created: f.created_at, completed: f.completed_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
-    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', cat: x.category || null, due: x.due_date, created: x.created_at, completed: x.completed_at, html: withBadge(taskItem(x), 'task', 'task') })),
+    ...fus.filter(match[s]).map((f) => ({ kind: 'fu', cat: f.category || null, imp: f.importance || 'neutral', due: f.due_date, created: f.created_at, completed: f.completed_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
+    ...tasks.filter(tmatch[s]).map((x) => ({ kind: 'task', cat: x.category || null, imp: x.importance || 'neutral', due: x.due_date, created: x.created_at, completed: x.completed_at, html: withBadge(taskItem(x), 'task', 'task') })),
   ].filter((i) => (ty === 'all' || i.kind === ty) && catMatch(i));
-  if (s === 'done') items.sort((a, b) => ((a.completed || '') < (b.completed || '') ? 1 : -1)); // newest finished first
-  else items.sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : (a.created < b.created ? 1 : -1));
+  const baseSort = s === 'done'
+    ? (a, b) => ((a.completed || '') < (b.completed || '') ? 1 : -1) // newest finished first
+    : (a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : (a.due || '9999') > (b.due || '9999') ? 1 : (a.created < b.created ? 1 : -1);
+  if (state.actionImpSort === 'none') items.sort(baseSort);
+  else { // importance sort: urgent first (desc) or neutral first (asc), existing order as tiebreak
+    const dir = state.actionImpSort === 'desc' ? 1 : -1;
+    items.sort((a, b) => dir * (impRank(a.imp) - impRank(b.imp)) || baseSort(a, b));
+  }
   const nOpen = fus.filter(fuOpen).length + tasks.filter(tOpen).length;
   const nParked = fus.filter(fuParked).length;
   const nDone = fus.filter(fuDone).length + tasks.filter(tDone).length;
@@ -202,11 +208,15 @@ export async function renderActions() {
   $view.innerHTML = `
     <div class="cal-bar"><div class="pills" role="tablist">${seg('open', 'Open', nOpen)}${seg('parked', 'Parked', nParked)}${seg('done', 'Done', nDone)}</div>
       <button class="pill" id="actAddFu">+ Follow-up</button><button class="pill" id="actAddTask">+ Task</button></div>
-    <div class="pills" style="margin:10px 0" role="tablist">${typ('all', 'All')}${typ('fu', 'Follow-ups')}${typ('task', 'Tasks')}</div>
+    <div class="pills" style="margin:10px 0" role="tablist">${typ('all', 'All')}${typ('fu', 'Follow-ups')}${typ('task', 'Tasks')}<button class="pill${state.actionImpSort === 'none' ? '' : ' on'}" id="impSort" title="Sort by importance">${{ none: 'Importance', desc: 'Importance ↓', asc: 'Importance ↑' }[state.actionImpSort]}</button></div>
     ${catFilter ? `<div style="margin:0 0 10px">${catFilter}</div>` : ''}
     <div class="card">${items.length ? `<ul class="list">${items.map((i) => i.html).join('')}</ul>` : '<div class="empty">Nothing here.</div>'}</div>`;
   $view.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { state.actionStatus = b.dataset.s; renderActions(); }));
   $view.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { state.actionType = b.dataset.t; renderActions(); }));
+  document.getElementById('impSort').onclick = () => {
+    state.actionImpSort = { none: 'desc', desc: 'asc', asc: 'none' }[state.actionImpSort];
+    renderActions();
+  };
   const actCat = document.getElementById('actCat');
   if (actCat) actCat.onchange = (e) => { state.actionCat = e.target.value; renderActions(); };
   document.getElementById('actAddFu').onclick = () => newFollowup();
