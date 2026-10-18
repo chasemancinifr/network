@@ -1,7 +1,7 @@
 // Person panel: full record view + add/edit form.
 
-import { sb, q, loadPeople, personTasks } from './db.js';
-import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField } from './ui.js';
+import { sb, q, loadPeople, personTasks, buildActionMap } from './db.js';
+import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField, actDot } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
@@ -21,6 +21,7 @@ export async function renderPerson(id) {
     actions: `<a class="pill" href="#/p/${p.id}/edit">Edit</a>` });
   const d = dueInfo(p);
   const open = fus.filter((f) => f.status === 'open'), parked = fus.filter((f) => f.status === 'parked'), closed = fus.filter((f) => f.status === 'closed');
+  const myActs = buildActionMap(open, ptasks)[id];
   const facts = [
     ['Role', [p.role, p.dept, p.org].filter(Boolean).join(' · ')], ['Relationship', p.relationship],
     ['Circles', (p.circles || []).join(', ')], ['Birthday', bday(p)],
@@ -35,7 +36,7 @@ export async function renderPerson(id) {
   const lastD = last && last.happened_at ? dayOf(last.happened_at) : null;
   root.innerHTML = `
     <div class="p-hero"><span class="av lg">${esc(initials(p.name))}</span>
-      <div class="main"><div class="sub">${esc(p.role || p.relationship || '')}</div><div style="margin-top:4px">${personStatus(p) || st('ring', p.last_contact ? `Last contact ${ago(p.last_contact)}` : 'No cadence')}</div></div></div>
+      <div class="main"><div class="sub">${esc(p.role || p.relationship || '')}${actDot(myActs)}</div><div style="margin-top:4px">${personStatus(p) || st('ring', p.last_contact ? `Last contact ${ago(p.last_contact)}` : 'No cadence')}</div></div></div>
     ${last ? `<div class="card recap">
       <div class="recap-head"><span>Last interaction</span><span class="mono">${lastD ? `${monoDate(lastD)} · ${ago(lastD)}` : 'Undated'}</span></div>
       <div class="recap-body">${st('amber', last.kind)}${last.duration_min ? `<span class="meta">${last.duration_min} min</span>` : ''}${last.summary ? `<p>${esc(last.summary)}</p>` : ''}</div>

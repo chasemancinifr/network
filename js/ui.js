@@ -38,10 +38,10 @@ export function personStatus(p) {
 export function personMeta(p) {
   return [p.tier ? `Tier ${p.tier}` : null, [p.role, p.dept].filter(Boolean).join(' · ') || p.relationship || (p.circles || []).join(', ')].filter(Boolean).join(' · ');
 }
-export const personRow = (p, extra = '') => `
+export const personRow = (p, extra = '', act = '') => `
   <li><a class="row" href="#/p/${p.id}">
     <span class="av">${esc(initials(p.name))}</span>
-    <span class="main"><span class="name">${esc(p.name)}</span><span class="meta">${esc(personMeta(p))}</span></span>
+    <span class="main"><span class="name">${esc(p.name)}${act}</span><span class="meta">${esc(personMeta(p))}</span></span>
     ${extra}</a></li>`;
 export function kickerDate() {
   const d = new Date();
@@ -144,5 +144,12 @@ export function importanceField(selected) {
     get: () => sel,
   };
 }
-const IMP_COLORS = { urgent: 'var(--red)', high: 'var(--amber)', medium: '#7d99a8' };
+const IMP_COLORS = { urgent: 'var(--red)', high: 'var(--amber)', medium: '#7d99a8', neutral: '#6e6e6e' };
+export { IMP_COLORS };
+// importance badge for action rows; every level gets its color
 export const impBadge = (i) => (IMP_COLORS[i] ? `<span class="typebadge" style="color:${IMP_COLORS[i]};border-color:${IMP_COLORS[i]}">${esc(i)}</span>` : '');
+// notification dot for person rows: open-action count tinted by the highest importance
+const IMP_RANK = { urgent: 0, high: 1, medium: 2, neutral: 3 };
+export const impRank = (i) => IMP_RANK[i] ?? 3;
+export const actDot = (e) => (!e || !e.n) ? ''
+  : `<span class="actdot" style="--c:${IMP_COLORS[e.top] || IMP_COLORS.neutral}" title="${e.n} open action${e.n === 1 ? '' : 's'}${e.top && e.top !== 'neutral' ? ` · ${e.top}` : ''}">${e.n}</span>`;

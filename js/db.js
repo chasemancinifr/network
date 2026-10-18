@@ -2,7 +2,7 @@
 
 import { createClient } from '../supabase.js';
 import { SUPABASE_URL, SUPABASE_KEY, state } from './config.js';
-import { toast } from './ui.js';
+import { toast, impRank } from './ui.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
@@ -26,6 +26,32 @@ export const openFollowups = () => q(sb.from('follow_ups').select('id,title,due_
 // deliberately separate from follow-ups, which are action items
 export const loadEvents = () => q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
   .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
+// per-person open-action counts with the highest importance level, for the
+// notification dot on person rows. Null importance counts as neutral.
+// Pure builder (pages that already loaded the rows reuse it); openActionMap
+// fetches the two slim queries itself.
+const IMP_NAMES = ['urgent', 'high', 'medium', 'neutral'];
+export function buildActionMap(fuRows, taskRows) {
+  const map = {};
+  const fold = (rows) => (rows || []).forEach((r) => {
+    if (!r || !r.person_id) return;
+    const e = map[r.person_id] || (map[r.person_id] = { n: 0, top: 3 });
+    e.n += 1;
+    const rk = impRank(r.importance);
+    if (rk < e.top) e.top = rk;
+  });
+  fold(fuRows); fold(taskRows);
+  Object.values(map).forEach((e) => { e.top = IMP_NAMES[e.top] || 'neutral'; });
+  return map;
+}
+export async function openActionMap() {
+  const cols = 'person_id' + (state.hasImportance ? ',importance' : '');
+  const [fus, tres] = await Promise.all([
+    q(sb.from('follow_ups').select(cols).eq('status', 'open')),
+    sb.from('tasks').select(cols).eq('status', 'open'),
+  ]);
+  return buildActionMap(fus, tres.error ? [] : tres.data);
+}
 // raw (no toast) variant for pages that merely fold tasks in — the table may
 // not exist yet if the 0002 migration hasn't been run
 export const openTasksSoft = async () => {
@@ -34,7 +60,7 @@ export const openTasksSoft = async () => {
   return error ? [] : (data || []);
 };
 export const personTasks = async (id) => {
-  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,created_at,completed_at').eq('person_id', id).eq('status', 'open')
+  const { data, error } = await sb.from('tasks').select('id,title,due_date,status,created_at,completed_at' + (state.hasImportance ? ',importance' : '')).eq('person_id', id).eq('status', 'open')
     .order('due_date', { ascending: true, nullsFirst: false });
   return error ? [] : (data || []);
 };

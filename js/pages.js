@@ -1,7 +1,7 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
-import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft } from './db.js';
-import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel } from './ui.js';
+import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
+import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
@@ -54,6 +54,7 @@ export async function renderDashboard() {
 
   // ---- events coming up + quick reminders ----
   const upcoming = evs.filter((e) => e.event_date >= t).slice(0, 6);
+  const actMap = buildActionMap(fus, tasks);
   const reminders = [
     ...fus.map((f) => ({ due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
     ...tasks.map((x) => ({ due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
@@ -74,7 +75,7 @@ export async function renderDashboard() {
     </div>
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Going stale', stale.length, '', stale.length ? 'red' : '')}
-      ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)))).join('')}</ul>` : '<div class="card empty">Nobody\u2019s drifting. The cadences are holding.</div>'}
+      ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)), actDot(actMap[p.id]))).join('')}</ul>` : '<div class="card empty">Nobody\u2019s drifting. The cadences are holding.</div>'}
       ${sec('Events coming up', upcoming.length)}
       ${upcoming.length ? evList(upcoming, '', true) : '<div class="card empty">Nothing on the calendar.</div>'}
       <div id="evSlot"></div>
@@ -427,7 +428,7 @@ export async function renderInteractions() {
 // ---------- people ----------
 export async function renderPeople() {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
-  const people = await loadPeople();
+  const [people, actMap] = await Promise.all([loadPeople(), openActionMap()]);
   $kicker.textContent = `Directory · ${people.length} records`;
   const circles = [...new Set(people.flatMap((p) => p.circles || []))].sort();
   const tierN = (tr) => people.filter((p) => p.tier === tr).length;
@@ -465,7 +466,7 @@ export async function renderPeople() {
       (!F.circles.size || (p.circles || []).some((c) => F.circles.has(c)) || (F.circles.has('__none') && !(p.circles || []).length)) &&
       (!F.rels.size || F.rels.has(relKey(p)) || (F.rels.has('__none') && !relOf(p))) &&
       (!needle || [p.name, ...(p.aliases || []), p.role, p.dept, p.relationship].some((s) => (s || '').toLowerCase().includes(needle))));
-    document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p))).join('') : '<li class="empty">No matches.</li>';
+    document.getElementById('plist').innerHTML = rows.length ? rows.map((p) => personRow(p, personStatus(p), actDot(actMap[p.id]))).join('') : '<li class="empty">No matches.</li>';
     document.getElementById('count').textContent = rows.length === people.length ? `${people.length} records` : `${rows.length} of ${people.length}`;
   };
   const qi = document.getElementById('q');

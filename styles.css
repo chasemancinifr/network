@@ -352,6 +352,7 @@ li > .ntouch { margin: 0 12px 12px; }
 .rel-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--muted);margin-bottom:6px}
 .rel-legend b{color:var(--text);font-family:var(--mono)}
 .dotk{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.actdot{display:inline-block;min-width:20px;height:20px;padding:0 6px;margin-left:8px;border-radius:99px;border:1px solid var(--c,#6e6e6e);color:var(--c,#6e6e6e);font:700 11px/18px var(--mono);text-align:center;vertical-align:2px}
 .mixlabel{font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-family:var(--mono);margin:14px 0 2px}
 .mixlabel:first-of-type{margin-top:2px}
 .typebadge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;align-self:center;flex:none}
