@@ -109,6 +109,31 @@ $themeBtn.onclick = () => {
 };
 applyTheme(getTheme());
 
+// ---------- person picker ----------
+// A select of everyone plus a type-to-find box above it (160+ names is a long
+// scroll on a phone). Required pickers start blank so nothing is pre-chosen.
+export function personPicker({ id, people, selected = '', required = false, label = 'Person' }) {
+  const opts = people.map((p) => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  return `<label class="lbl" for="${id}">${label}</label>
+    <input class="field psearch" type="search" data-psearch="${id}" placeholder="Type a name to find…" autocomplete="off" autocapitalize="words" style="margin-bottom:6px">
+    <select class="field" id="${id}"${required ? ' required' : ''}><option value="">${required ? 'Choose a person…' : '—'}</option>${opts}</select>`;
+}
+export function bindPersonPickers(root) {
+  root.querySelectorAll('[data-psearch]').forEach((inp) => {
+    const sel = root.querySelector('#' + inp.dataset.psearch);
+    if (!sel) return;
+    const all = [...sel.options].map((o) => ({ v: o.value, t: o.textContent }));
+    inp.oninput = () => {
+      const q = inp.value.trim().toLowerCase();
+      const keep = sel.value;
+      const rows = q ? all.filter((o) => !o.v || o.t.toLowerCase().includes(q)) : all;
+      sel.innerHTML = rows.map((o) => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
+      const firstHit = rows.find((o) => o.v);
+      sel.value = q && firstHit ? firstHit.v : (rows.some((o) => o.v === keep) ? keep : '');
+    };
+  });
+}
+
 // ---------- action categories (follow-ups + tasks) ----------
 // Pill selector for the follow-up/task forms. Renders nothing until the 0003
 // migration has added the category column (state.hasCategory, probed at boot).

@@ -2,7 +2,7 @@
 // follow-up, task, or event.
 
 import { sb, q, loadPeople } from './db.js';
-import { $pBody, openPanel, closePanel, panelHead, toast, categoryField, importanceField } from './ui.js';
+import { $pBody, openPanel, closePanel, panelHead, toast, categoryField, importanceField, personPicker as pickerHtml, bindPersonPickers } from './ui.js';
 import { esc, today } from './utils.js';
 import { KINDS, state } from './config.js';
 import { openTaskForm } from './tasks.js';
@@ -29,10 +29,7 @@ export async function openNewMenu() {
   }));
 }
 
-const personPicker = (people, id, required) =>
-  `<label class="lbl" for="${id}">Person</label><select class="field" id="${id}"${required ? ' required' : ''}>` +
-  (required ? '' : '<option value="">—</option>') +
-  people.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('') + '</select>';
+const personPicker = (people, id, required) => pickerHtml({ id, people, required });
 
 async function newInteraction() {
   const people = await loadPeople();
@@ -45,6 +42,7 @@ async function newInteraction() {
     <label class="lbl" for="ni_summary">What happened</label><textarea class="field" id="ni_summary" required placeholder="Real conversation only: what was said, what you learned" style="min-height:90px"></textarea>
     <label class="lbl" for="ni_min">Minutes (optional)</label><input class="field" id="ni_min" inputmode="numeric">
     <div class="actions" style="margin-top:14px"><button class="btn primary">Save</button><button type="button" class="btn" id="ni_cancel">Back</button></div></form>`;
+  bindPersonPickers($pBody);
   document.getElementById('ni_cancel').onclick = () => openNewMenu();
   document.getElementById('nif').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
@@ -73,6 +71,7 @@ export async function newFollowup() {
     ${cat.html}
     ${imp.html}
     <div class="actions" style="margin-top:14px"><button class="btn primary">Add</button><button type="button" class="btn" id="nf_cancel">Back</button></div></form>`;
+  bindPersonPickers($pBody);
   document.getElementById('nf_cancel').onclick = () => openNewMenu();
   cat.bind($pBody); imp.bind($pBody);
   document.getElementById('nff').onsubmit = async (e) => {

@@ -1,7 +1,7 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
-import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank } from './ui.js';
+import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank, toast, $pBody, personPicker, bindPersonPickers } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
@@ -110,7 +110,7 @@ export async function renderDashboard() {
     ${insightsHtml}
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Going stale', stale.length, '', stale.length ? 'red' : '')}
-      ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)), actDot(actMap[p.id]))).join('')}</ul>` : '<div class="card empty">Nobody\u2019s drifting. The cadences are holding.</div>'}
+      ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)), actDot(actMap[p.id]))).join('')}</ul>` : '<div class="card empty">Nobody you\u2019ve logged a conversation with has gone 60+ days quiet.</div>'}
       ${sec('Events coming up', upcoming.length)}
       ${upcoming.length ? evList(upcoming, '', true) : '<div class="card empty">Nothing on the calendar.</div>'}
       <div id="evSlot"></div>
@@ -200,8 +200,8 @@ export async function renderOverdue() {
       ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;
   $kicker.textContent = `Attention · ${people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
-    ${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
-    ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}
+    ${people.some((p) => p.cadence_days) ? `${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
+    ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}` : ''}
     ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
     ${fuList(late, 'No follow-ups past their due date.', (f) => { const fp = fullPerson(f); return ntouch(nextTouch(fp, lastById[fp.id])); })}
     ${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
@@ -481,7 +481,7 @@ export async function renderInteractions() {
     const slot = document.getElementById('intSlot');
     slot.innerHTML = `<form class="card form" id="ilf" style="margin-top:12px">
       <div class="grid2">
-        <div><label class="lbl">Person</label><select class="field" id="ilp">${people.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+        <div>${personPicker({ id: 'ilp', people, required: true })}</div>
         <div><label class="lbl">Type</label><select class="field" id="ilk">${KINDS.map((k) => `<option>${k}</option>`).join('')}</select></div>
       </div>
       <div class="grid2">
@@ -490,6 +490,7 @@ export async function renderInteractions() {
       </div>
       <label class="lbl">What happened</label><textarea class="field" id="ils" required placeholder="Real conversation only: what was said, what you learned"></textarea>
       <div class="actions" style="margin-top:14px"><button class="btn primary">Save</button><button type="button" class="btn" id="ilx">Cancel</button></div></form>`;
+    bindPersonPickers(slot);
     document.getElementById('ilx').onclick = () => (slot.innerHTML = '');
     document.getElementById('ilf').onsubmit = async (e) => {
       e.preventDefault(); e.submitter && (e.submitter.disabled = true);
@@ -514,9 +515,11 @@ const groupIsOpen = (g) => {
   return groupOpen[g];
 };
 const chevSvg = '<svg class="chev" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-export async function renderPeople() {
+let peopleActMap = null;
+export async function renderPeople(reuse) {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
-  const [people, actMap] = await Promise.all([loadPeople(), openActionMap()]);
+  const [people, actMap] = await Promise.all([loadPeople(), reuse === true && peopleActMap ? peopleActMap : openActionMap()]);
+  peopleActMap = actMap;
   $kicker.textContent = `Directory · ${people.length} records`;
   const circles = [...new Set(people.flatMap((p) => p.circles || []))].sort();
   const tierN = (tr) => people.filter((p) => p.tier === tr).length;
@@ -549,7 +552,7 @@ export async function renderPeople() {
         <div class="checklist">${body}</div></div>`;
   const dot = (c) => `<i class="dotk" style="background:${c}"></i>`;
   const famRowHtml = () => !famNHere ? '' : `<button class="chk ${famAllOn() ? 'on' : ''}" data-rel="__family" aria-pressed="${famAllOn()}">${chk(0, 'Family', famNHere, dot(relColor('Family')))}</button>` +
-    famRolesHere.map((r) => `<button class="chk sub ${F.rels.has(r) ? 'on' : ''}" data-rel="${esc(r)}" aria-pressed="${F.rels.has(r)}">${chk(0, FAMILY_PLURAL[r] || r, relN(r), dot(relColor(r)))}</button>`).join('');
+    famRolesHere.map((r) => `<button class="chk sub ${F.rels.has(r) ? 'on' : ''}" data-rel="${esc(r)}" aria-pressed="${F.rels.has(r)}">${chk(0, r === 'Family' ? 'Family (no role set)' : (FAMILY_PLURAL[r] || r), relN(r), dot(relColor(r)))}</button>`).join('');
   $view.innerHTML = `
     <div class="people-wrap"><div class="people-side">
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
@@ -580,7 +583,7 @@ export async function renderPeople() {
   const toggle = (set, key, btn) => {
     set.has(key) ? set.delete(key) : set.add(key);
     btn.classList.toggle('on', set.has(key)); btn.setAttribute('aria-pressed', set.has(key));
-    renderPeople();
+    renderPeople(true);
   };
   $view.querySelectorAll('[data-tier]').forEach((b) => (b.onclick = () => toggle(F.tiers, b.dataset.tier, b)));
   $view.querySelectorAll('[data-circle]').forEach((b) => (b.onclick = () => toggle(F.circles, b.dataset.circle, b)));
@@ -588,15 +591,15 @@ export async function renderPeople() {
     if (b.dataset.rel === '__family') {
       const allOn = famAllOn();
       famRolesHere.forEach((r) => { if (allOn) F.rels.delete(r); else F.rels.add(r); });
-      renderPeople();
+      renderPeople(true);
     } else if (b.dataset.rel === '__other') {
       const allOn = relSmall.length > 0 && relSmall.every((r) => F.rels.has(r.k));
       relSmall.forEach((r) => { if (allOn) F.rels.delete(r.k); else F.rels.add(r.k); });
-      renderPeople();
+      renderPeople(true);
     } else toggle(F.rels, b.dataset.rel, b);
   }));
   $view.querySelectorAll('[data-clear]').forEach((b) => (b.onclick = () => {
-    ({ tiers: F.tiers, circles: F.circles, rels: F.rels }[b.dataset.clear]).clear(); renderPeople();
+    ({ tiers: F.tiers, circles: F.circles, rels: F.rels }[b.dataset.clear]).clear(); renderPeople(true);
   }));
   $view.querySelectorAll('[data-gtoggle]').forEach((b) => (b.onclick = () => {
     const g = b.dataset.gtoggle;
