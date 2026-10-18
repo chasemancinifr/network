@@ -8,15 +8,13 @@ import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js
 import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
+import { relColor, tierColor, circleColor, relDefaultHex, tierDefaultHex, REL_KEYS, TIER_KEYS, CIRCLE_PALETTE, getColorOverrides, setColorOverride, resetColorOverrides } from './colors.js';
 
 // ---------- dashboard = the big picture ----------
-const REL_COLORS = { Professional: 'var(--rel-professional)', Friend: 'var(--rel-friend)', Family: 'var(--rel-family)', 'Family Friend': 'var(--rel-familyfriend)', Customer: 'var(--rel-customer)', Prospect: 'var(--rel-prospect)', Business: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
-const REL_LABELS = { Professional: 'work', Friend: 'friends', Family: 'family', 'Family Friend': 'family friends', Customer: 'customers', Prospect: 'prospects', Business: 'business', OTHER: 'other', '': 'uncategorized' };
-// relationship bucket: standard category, OTHER for custom values, '' for blank
-const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
-const relLabel = (r) => ({ Professional: 'Work', Friend: 'Friends', Family: 'Family', 'Family Friend': 'Family Friends', Customer: 'Customers', Prospect: 'Prospects', Business: 'Business', OTHER: 'Other' }[r] || r);
-const TIER_COLORS = { A: 'var(--amber)', B: '#7fa07a', C: '#7d99a8', D: '#e0654d', '': '#6e6e6e' };
-const CIRCLE_COLORS = ['#d2a24c', '#7fa07a', '#c08b5c', '#7d99a8', '#a8716a', '#a08b62', '#d9704a', '#8d8578'];
+// relationship value as-is (Title Case free text); '' for blank. Custom values
+// stand on their own — no OTHER bucket.
+const relKey = (p) => (p.relationship || '').trim();
+const relLabel = (r) => ({ Professional: 'Work', Friend: 'Friends', Family: 'Family', 'Family Friend': 'Family Friends', Customer: 'Customers', Prospect: 'Prospects', Business: 'Business' }[r] || r || 'Uncategorized');
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
@@ -38,23 +36,47 @@ export async function renderDashboard() {
       legend: entries.map((e) => `<span><i class="dotk" style="background:${e.c}"></i><b>${e.n}</b> ${esc(e.l)}</span>`).join(''),
     };
   };
-  const mixLine = (label, entries, note) => {
+  const mixLine = (label, entries, note, group) => {
     const m = mixParts(entries.filter((e) => e.n));
-    return `<div class="mixlabel">${esc(label)}</div><div class="relbar">${m.bar}</div><div class="rel-legend">${m.legend}</div>${note ? `<p class="note">${note}</p>` : ''}`;
+    const links = entries.filter((e) => e.n).map((e) =>
+      `<button class="mixlink" data-g="${group}" data-k="${esc(e.k)}" title="Show in People"><i class="dotk" style="background:${e.c}"></i><b>${e.n}</b> ${esc(e.l)}</button>`).join('');
+    return `<div class="mixlabel">${esc(label)}</div><div class="relbar">${m.bar}</div><div class="rel-legend">${links}</div>${note ? `<p class="note">${note}</p>` : ''}`;
   };
   const relN = {};
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
-  const relEntries = [...RELS, 'OTHER', ''].map((r) => ({ l: REL_LABELS[r], n: relN[r] || 0, c: REL_COLORS[r] }));
-  const tierEntries = [...TIERS.map((tr) => ({ l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: TIER_COLORS[tr] })),
-    { l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: TIER_COLORS[''] }];
+  const relOrder = [...RELS.filter((r) => relN[r]), ...Object.keys(relN).filter((r) => r && !RELS.includes(r)).sort((a, b) => relN[b] - relN[a])];
+  if (relN['']) relOrder.push('');
+  const relEntries = relOrder.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) }));
+  const tierEntries = [...TIERS.map((tr) => ({ k: tr, l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: tierColor(tr) })),
+    { k: '__none', l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: tierColor('') }];
   const circleCounts = {};
   people.forEach((p) => (p.circles || []).forEach((c) => { circleCounts[c] = (circleCounts[c] || 0) + 1; }));
   const circleEntries = Object.entries(circleCounts).sort((a, b) => b[1] - a[1]).slice(0, 8)
-    .map(([c, n], i) => ({ l: c, n, c: CIRCLE_COLORS[i % CIRCLE_COLORS.length] }));
+    .map(([c, n], i) => ({ k: c, l: c, n, c: circleColor(c, i) }));
 
   // ---- events coming up + quick reminders ----
   const upcoming = evs.filter((e) => e.event_date >= t).slice(0, 6);
   const actMap = buildActionMap(fus, tasks);
+
+  // ---- insights ----
+  const intsPrev7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -14) && r.happened_at < addDays(t, -7)).length;
+  const overdueN = fus.filter((f) => f.due_date && f.due_date < t).length + tasks.filter((x) => x.due_date && x.due_date < t).length;
+  const openN = fus.length + tasks.length;
+  const actEntries = Object.values(actMap).sort((a, b) => b.n - a.n);
+  const top3Acts = actEntries.slice(0, 3).reduce((a, e) => a + e.n, 0);
+  const stale90 = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 90).length;
+  const insights = [];
+  if (intsPrev7 > 0) {
+    const pct = Math.round((ints7 - intsPrev7) / intsPrev7 * 100);
+    insights.push({ c: pct >= 0 ? 'var(--rel-friend)' : 'var(--red)', t: `Conversations ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct)}% vs last week (${ints7} vs ${intsPrev7}).` });
+  } else if (ints7 > 0) insights.push({ c: 'var(--rel-friend)', t: `${ints7} conversations logged this week — first active week in the window.` });
+  if (overdueN > 0) insights.push({ c: 'var(--red)', t: `${overdueN} of your ${openN} open actions are overdue.` });
+  else if (openN > 0) insights.push({ c: 'var(--rel-friend)', t: `All ${openN} open actions are on schedule — nothing overdue.` });
+  if (openN > 0 && actEntries.length >= 3) insights.push({ c: 'var(--amber)', t: `${top3Acts} of your ${openN} open actions belong to just ${Math.min(3, actEntries.length)} people.` });
+  if (circleEntries.length) insights.push({ c: circleEntries[0].c, t: `${circleEntries[0].l} is your biggest circle — ${circleEntries[0].n} of ${people.length} people.` });
+  if (stale90 > 0) insights.push({ c: 'var(--amber)', t: `${stale90} ${stale90 === 1 ? 'person' : 'people'} you haven't contacted in 90+ days.` });
+  const insightsHtml = insights.length ? `<div class="card" style="margin-top:12px;padding:6px 14px">${insights.map((i) =>
+    `<div class="insight"><i class="dotk" style="background:${i.c}"></i><span>${esc(i.t)}</span></div>`).join('')}</div>` : '';
   const reminders = [
     ...fus.map((f) => ({ due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
     ...tasks.map((x) => ({ due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
@@ -69,10 +91,11 @@ export async function renderDashboard() {
     </div>
     <div class="card" style="margin-top:12px;padding:14px">
       ${sec('Network mix')}
-      ${mixLine('Relationships', relEntries, relN[''] ? `${relN['']} people still need a relationship category.` : '')}
-      ${mixLine('Tiers', tierEntries, '')}
-      ${mixLine('Circles \u00b7 top 8', circleEntries, '')}
+      ${mixLine('Relationships', relEntries, relN[''] ? `${relN['']} people still need a relationship category.` : '', 'rels')}
+      ${mixLine('Tiers', tierEntries, '', 'tiers')}
+      ${mixLine('Circles \u00b7 top 8', circleEntries, '', 'circles')}
     </div>
+    ${insightsHtml}
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Going stale', stale.length, '', stale.length ? 'red' : '')}
       ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)), actDot(actMap[p.id]))).join('')}</ul>` : '<div class="card empty">Nobody\u2019s drifting. The cadences are holding.</div>'}
@@ -91,6 +114,13 @@ export async function renderDashboard() {
   bindFollowups(renderDashboard);
   bindTasks(renderDashboard);
   bindEvents(renderDashboard, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderDashboard));
+  // network mix drill-in: tap a legend item to open People filtered to it
+  $view.querySelectorAll('.mixlink').forEach((b) => (b.onclick = () => {
+    const F = state.peopleFilter;
+    F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear();
+    ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
+    location.hash = '#/people';
+  }));
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
 
@@ -436,6 +466,13 @@ export async function renderInteractions() {
 }
 
 // ---------- people ----------
+// filter-group collapse state (module-level so it survives re-renders)
+const groupOpen = { tiers: null, rels: null, circles: null, recent: null };
+const groupIsOpen = (g) => {
+  if (groupOpen[g] === null) groupOpen[g] = !(typeof window !== 'undefined' && window.matchMedia('(max-width: 899px)').matches);
+  return groupOpen[g];
+};
+const chevSvg = '<svg class="chev" viewBox="0 0 24 24" width="11" height="11" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 export async function renderPeople() {
   setHead({ kicker: 'Directory', title: 'People', tab: 'people', add: true });
   const [people, actMap] = await Promise.all([loadPeople(), openActionMap()]);
@@ -448,23 +485,31 @@ export async function renderPeople() {
   const relOf = (p) => (p.relationship || '').trim();
   const relN = (r) => people.filter((p) => relKey(p) === r).length;
   const noRelN = people.filter((p) => !relOf(p)).length;
+  const relCustomN = {};
+  people.forEach((p) => { const r = relOf(p); if (r && !RELS.includes(r)) relCustomN[r] = (relCustomN[r] || 0) + 1; });
+  const relRows = [
+    ...RELS.filter((r) => relN(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
+    ...Object.entries(relCustomN).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
+  ];
+  const circleRank = {};
+  [...circles].sort((a, b) => circleN(b) - circleN(a)).forEach((c, i) => { circleRank[c] = i; });
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
   const F = state.peopleFilter;
-  const chk = (on, label, n) => `<span class="box" aria-hidden="true"></span><span class="t">${esc(label)}</span><span class="n">${n}</span>`;
+  const chk = (on, label, n, pre = '') => `<span class="box" aria-hidden="true"></span>${pre}<span class="t">${esc(label)}</span><span class="n">${n}</span>`;
+  const fgroup = (g, label, clearKey, body) => `
+      <div class="fgroup${groupIsOpen(g) ? '' : ' closed'}" data-group="${g}"><div class="flabel"><button class="fgtoggle" data-gtoggle="${g}" aria-expanded="${groupIsOpen(g)}"><span>${label}</span>${chevSvg}</button>${F[clearKey].size ? `<button class="mini" data-clear="${clearKey}">Clear</button>` : ''}</div>
+        <div class="checklist">${body}</div></div>`;
+  const dot = (c) => `<i class="dotk" style="background:${c}"></i>`;
   $view.innerHTML = `
     <div class="people-wrap"><div class="people-side">
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
-      <div class="fgroup"><div class="flabel"><span>Tiers</span>${F.tiers.size ? '<button class="mini" data-clear="tiers">Clear</button>' : ''}</div>
-        <div class="checklist" id="tierList">${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t))}</button>`).join('')}
-        <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN)}</button></div></div>
-      <div class="fgroup"><div class="flabel"><span>Relationship</span>${F.rels.size ? '<button class="mini" data-clear="rels">Clear</button>' : ''}</div>
-        <div class="checklist" id="relList">${RELS.map((r) => `<button class="chk ${F.rels.has(r) ? 'on' : ''}" data-rel="${r}" aria-pressed="${F.rels.has(r)}">${chk(0, relLabel(r), relN(r))}</button>`).join('')}
-        <button class="chk ${F.rels.has('OTHER') ? 'on' : ''}" data-rel="OTHER" aria-pressed="${F.rels.has('OTHER')}">${chk(0, 'Other', relN('OTHER'))}</button>
-        <button class="chk ${F.rels.has('__none') ? 'on' : ''}" data-rel="__none" aria-pressed="${F.rels.has('__none')}">${chk(0, 'Uncategorized', noRelN)}</button></div></div>
-      <div class="fgroup"><div class="flabel"><span>Circles</span>${F.circles.size ? '<button class="mini" data-clear="circles">Clear</button>' : ''}</div>
-        <div class="checklist" id="circleList">${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c))}</button>`).join('')}
-        <button class="chk ${F.circles.has('__none') ? 'on' : ''}" data-circle="__none" aria-pressed="${F.circles.has('__none')}">${chk(0, 'Unassigned', noCircleN)}</button></div></div>
-      ${recent.length ? `<div class="fgroup recent-only"><div class="flabel"><span>Recently added</span></div>
+      ${fgroup('tiers', 'Tiers', 'tiers', `${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t), dot(tierColor(t)))}</button>`).join('')}
+        <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN, dot(tierColor('')))}</button>`)}
+      ${fgroup('rels', 'Relationship', 'rels', `${relRows.map((r) => `<button class="chk ${F.rels.has(r.k) ? 'on' : ''}" data-rel="${esc(r.k)}" aria-pressed="${F.rels.has(r.k)}">${chk(0, r.label, r.n, dot(r.c))}</button>`).join('')}
+        <button class="chk ${F.rels.has('__none') ? 'on' : ''}" data-rel="__none" aria-pressed="${F.rels.has('__none')}">${chk(0, 'Uncategorized', noRelN, dot('var(--rel-none)'))}</button>`)}
+      ${fgroup('circles', 'Circles', 'circles', `${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c), dot(circleColor(c, circleRank[c])))}</button>`).join('')}
+        <button class="chk ${F.circles.has('__none') ? 'on' : ''}" data-circle="__none" aria-pressed="${F.circles.has('__none')}">${chk(0, 'Unassigned', noCircleN)}</button>`)}
+      ${recent.length ? `<div class="fgroup recent-only${groupIsOpen('recent') ? '' : ' closed'}" data-group="recent"><div class="flabel"><button class="fgtoggle" data-gtoggle="recent" aria-expanded="${groupIsOpen('recent')}"><span>Recently added</span>${chevSvg}</button></div>
         <div class="checklist">${recent.map((p) => `<a class="chk" href="#/p/${p.id}"><span class="t">${esc(p.name)}</span>${p.tier ? `<span class="tierb">Tier ${p.tier}</span>` : ''}<span class="n">added ${ago(dayOf(p.created_at))}</span></a>`).join('')}</div></div>` : ''}
       <div id="count" class="count"></div>
     </div>
@@ -491,6 +536,12 @@ export async function renderPeople() {
   $view.querySelectorAll('[data-rel]').forEach((b) => (b.onclick = () => toggle(F.rels, b.dataset.rel, b)));
   $view.querySelectorAll('[data-clear]').forEach((b) => (b.onclick = () => {
     ({ tiers: F.tiers, circles: F.circles, rels: F.rels }[b.dataset.clear]).clear(); renderPeople();
+  }));
+  $view.querySelectorAll('[data-gtoggle]').forEach((b) => (b.onclick = () => {
+    const g = b.dataset.gtoggle;
+    groupOpen[g] = !groupIsOpen(g);
+    b.closest('.fgroup').classList.toggle('closed', !groupOpen[g]);
+    b.setAttribute('aria-expanded', String(groupOpen[g]));
   }));
   draw();
 }
@@ -578,4 +629,37 @@ export async function renderCalendar() {
     bindEvents(renderCalendar, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderCalendar));
   };
   draw();
+}
+
+// ---------- settings: color customization (this device) ----------
+export async function renderSettings() {
+  setHead({ kicker: 'App', title: 'Settings', tab: 'settings', add: false });
+  const people = await loadPeople();
+  const circleCounts = {};
+  people.forEach((p) => (p.circles || []).forEach((c) => { circleCounts[c] = (circleCounts[c] || 0) + 1; }));
+  const circles = Object.keys(circleCounts).sort();
+  const circleRank = {};
+  [...circles].sort((a, b) => circleCounts[b] - circleCounts[a]).forEach((c, i) => { circleRank[c] = i; });
+  const customs = [...new Set(people.map((p) => (p.relationship || '').trim()).filter((r) => r && !REL_KEYS.includes(r)))].sort();
+  const ov = getColorOverrides();
+  const effRel = (k) => ov.rel?.[k] || relDefaultHex(k);
+  const effTier = (t) => ov.tier?.[t || ''] || tierDefaultHex(t);
+  const effCircle = (c) => ov.circle?.[c] || CIRCLE_PALETTE[circleRank[c] % CIRCLE_PALETTE.length];
+  const colorRow = (group, key, label, hex) => `
+    <div class="colorrow"><input type="color" value="${hex}" data-cg="${group}" data-ck="${esc(key)}" aria-label="${esc(label)} color">
+      <span class="t">${esc(label)}</span><code class="hex">${hex}</code></div>`;
+  $view.innerHTML = `
+    ${sec('Relationships')}
+    <div class="card" style="padding:6px 14px">${[...REL_KEYS, ...customs].map((k) => colorRow('rel', k, k, effRel(k))).join('')}</div>
+    ${sec('Tiers')}
+    <div class="card" style="padding:6px 14px">${[...TIER_KEYS, ''].map((t) => colorRow('tier', t, t ? `Tier ${t}` : 'Unassigned', effTier(t))).join('')}</div>
+    ${sec('Circles')}
+    <div class="card" style="padding:6px 14px">${circles.map((c) => colorRow('circle', c, `${c} · ${circleCounts[c]}`, effCircle(c))).join('') || '<div class="empty">No circles yet.</div>'}</div>
+    <p class="note">Colors save on this device and apply everywhere right away.</p>
+    <div class="linkrow"><a href="#" id="colorReset">Reset all colors</a></div>`;
+  $view.querySelectorAll('[data-cg]').forEach((inp) => (inp.oninput = () => {
+    setColorOverride(inp.dataset.cg, inp.dataset.ck, inp.value);
+    inp.closest('.colorrow').querySelector('.hex').textContent = inp.value;
+  }));
+  document.getElementById('colorReset').onclick = (e) => { e.preventDefault(); resetColorOverrides(); renderSettings(); };
 }

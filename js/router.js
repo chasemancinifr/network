@@ -4,13 +4,13 @@ import { sb, probeActionCategory, probeActionImportance, probeSeries } from './d
 import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
-import { renderDashboard, renderToday, renderPeople, renderOverdue, renderActions, renderInteractions, renderRecent, renderCalendar } from './pages.js';
+import { renderDashboard, renderToday, renderPeople, renderOverdue, renderActions, renderInteractions, renderRecent, renderCalendar, renderSettings } from './pages.js';
 import { renderPerson, renderEdit } from './person.js';
 import { renderLogin, renderPassword } from './auth.js';
 import { openNewMenu } from './new.js';
 
 // ---------- router ----------
-const BASE = { '#/dashboard': renderDashboard, '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/actions': renderActions, '#/interactions': renderInteractions, '#/recent': renderRecent, '#/calendar': renderCalendar };
+const BASE = { '#/dashboard': renderDashboard, '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/actions': renderActions, '#/interactions': renderInteractions, '#/recent': renderRecent, '#/calendar': renderCalendar, '#/settings': renderSettings };
 function panelRoute(h) {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return () => renderEdit(m[1]);
