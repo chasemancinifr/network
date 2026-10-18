@@ -17,6 +17,14 @@ export function fmtDate(d) {
 }
 export function daysBetween(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
 export function addDays(d, n) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toLocaleDateString('en-CA'); }
+// addMonths: month arithmetic on YYYY-MM-DD with end-of-month clamping
+// (Jan 31 + 1 month -> Feb 28, not Mar 3)
+export function addMonths(d, n) {
+  const [y, m, dd] = d.split('-').map(Number);
+  const last = new Date(y, m + n, 0).getDate();
+  const x = new Date(y, m - 1 + n, Math.min(dd, last));
+  return x.toLocaleDateString('en-CA');
+}
 export function ago(d) {
   if (!d) return 'never';
   const n = daysBetween(d, today());

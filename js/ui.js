@@ -146,10 +146,32 @@ export function importanceField(selected) {
 }
 const IMP_COLORS = { urgent: 'var(--red)', high: 'var(--amber)', medium: '#7d99a8', neutral: '#6e6e6e' };
 export { IMP_COLORS };
-// importance badge for action rows; every level gets its color
 export const impBadge = (i) => (IMP_COLORS[i] ? `<span class="typebadge" style="color:${IMP_COLORS[i]};border-color:${IMP_COLORS[i]}">${esc(i)}</span>` : '');
 // notification dot for person rows: open-action count tinted by the highest importance
 const IMP_RANK = { urgent: 0, high: 1, medium: 2, neutral: 3 };
 export const impRank = (i) => IMP_RANK[i] ?? 3;
 export const actDot = (e) => (!e || !e.n) ? ''
   : `<span class="actdot" style="--c:${IMP_COLORS[e.top] || IMP_COLORS.neutral}" title="${e.n} open action${e.n === 1 ? '' : 's'}${e.top && e.top !== 'neutral' ? ` · ${e.top}` : ''}">${e.n}</span>`;
+
+// ---------- repeat selector (events + tasks, create only) ----------
+// Materializes N dated instances (weekly x12, monthly x12, yearly x10).
+// Each instance is a real row, editable/deletable on its own.
+export const REPEAT_OPTIONS = [
+  { k: 'none', label: 'No repeat', n: 1 },
+  { k: 'weekly', label: 'Weekly', n: 12 },
+  { k: 'monthly', label: 'Monthly', n: 12 },
+  { k: 'yearly', label: 'Yearly', n: 10 },
+];
+export function repeatField() {
+  let sel = 'none';
+  return {
+    html: `<label class="lbl">Repeat</label><div class="pills" data-repeatpills>${REPEAT_OPTIONS.map((o) => `<button type="button" class="pill${sel === o.k ? ' on' : ''}" data-r="${o.k}" title="${o.k === 'none' ? 'Just this once' : `${o.label} · creates ${o.n}`}">${o.label}</button>`).join('')}</div>`,
+    bind(root) {
+      root.querySelectorAll('[data-repeatpills] [data-r]').forEach((b) => (b.onclick = () => {
+        sel = b.dataset.r;
+        root.querySelectorAll('[data-repeatpills] [data-r]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    },
+    get: () => REPEAT_OPTIONS.find((o) => o.k === sel),
+  };
+}

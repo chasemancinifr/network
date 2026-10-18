@@ -2,8 +2,8 @@
 // flight). Deliberately separate from follow-ups, which are action items.
 
 import { sb, q, loadPeople } from './db.js';
-import { $view, st, monoDate, toast } from './ui.js';
-import { esc, today, fmtTime } from './utils.js';
+import { $view, st, monoDate, toast, repeatField } from './ui.js';
+import { esc, today, fmtTime, addDays, addMonths } from './utils.js';
 
 export function evItem(e, showDate = false) {
   const who = e.person ? `<a href="#/p/${e.person.id}">${esc(e.person.name)}</a>` : '';
@@ -21,26 +21,37 @@ export function bindEvents(rerender, root = $view, onEdit) {
 }
 // shared add/edit event form; renders into `slot`, calls onDone after save
 export async function openEventForm(slot, { ev = null, personId = null, date = today(), people, onDone }) {
+  const rep = repeatField();
   slot.innerHTML = `<form class="card form" id="evf" style="margin-top:12px">
     <label class="lbl">Event</label><input class="field" id="evt" required placeholder="What's happening" maxlength="120" value="${esc(ev?.title ?? '')}">
     <div class="grid2">
       <div><label class="lbl">Date</label><input class="field" type="date" id="evd" value="${esc(ev?.event_date ?? date)}" required></div>
       <div><label class="lbl">Time (optional)</label><input class="field" type="time" id="evh" value="${esc(String(ev?.event_time ?? '').slice(0, 5))}"></div>
     </div>
+    ${ev ? '' : rep.html}
     <label class="lbl">Person (optional)</label>
     <select class="field" id="evp"><option value="">—</option>${people.map((p) => `<option value="${p.id}" ${String(ev?.person_id ?? personId ?? '') === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <label class="lbl">Notes (optional)</label><textarea class="field" id="evn" style="min-height:70px">${esc(ev?.notes ?? '')}</textarea>
     <div class="actions" style="margin-top:14px"><button class="btn primary">${ev ? 'Save' : 'Add event'}</button><button type="button" class="btn" id="evx">Cancel</button></div></form>`;
   document.getElementById('evx').onclick = () => (slot.innerHTML = '');
+  if (!ev) rep.bind(slot);
   document.getElementById('evf').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('evt').value.trim(), event_date: document.getElementById('evd').value,
       event_time: document.getElementById('evh').value || null, person_id: document.getElementById('evp').value || null,
       notes: document.getElementById('evn').value.trim() || null };
     try {
-      if (ev) await q(sb.from('events').update(row).eq('id', ev.id));
-      else await q(sb.from('events').insert(row));
-      toast(ev ? 'Saved ✓' : 'Event added ✓'); slot.innerHTML = ''; onDone();
+      if (ev) { await q(sb.from('events').update(row).eq('id', ev.id)); toast('Saved ✓'); }
+      else {
+        const r = rep.get();
+        if (r.k === 'none') { await q(sb.from('events').insert(row)); toast('Event added ✓'); }
+        else {
+          const shift = (d, i) => r.k === 'weekly' ? addDays(d, 7 * i) : r.k === 'monthly' ? addMonths(d, i) : addMonths(d, 12 * i);
+          await q(sb.from('events').insert(Array.from({ length: r.n }, (_, i) => ({ ...row, event_date: shift(row.event_date, i) }))));
+          toast(`${r.n} ${r.label.toLowerCase()} events added ✓`);
+        }
+      }
+      slot.innerHTML = ''; onDone();
     } catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('evt').focus();

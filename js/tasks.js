@@ -2,8 +2,8 @@
 // link a person and may carry a due date — neither is required.
 
 import { sb, q, loadPeople } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge } from './ui.js';
-import { esc, today } from './utils.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField } from './ui.js';
+import { esc, today, addDays, addMonths } from './utils.js';
 import { state } from './config.js';
 
 export function taskStatus(t) {
@@ -36,25 +36,37 @@ export const taskList = (tasks, empty) => `<div class="card">${tasks.length ? `<
 export async function openTaskForm(slot, { personId = null, date = '', people, onDone }) {
   const cat = categoryField(null);
   const imp = importanceField(null);
+  const rep = repeatField();
   slot.innerHTML = `<form class="card form" id="tkf" style="margin-top:12px">
     <label class="lbl">Task</label><input class="field" id="tkt" required placeholder="What needs doing" maxlength="140">
     <div class="grid2">
       <div><label class="lbl">Due (optional)</label><input class="field" type="date" id="tkd" value="${esc(date)}"></div>
       <div><label class="lbl">Person (optional)</label><select class="field" id="tkp"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${String(personId ?? '') === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
     </div>
+    ${rep.html}
     <label class="lbl">Detail (optional)</label><textarea class="field" id="tkn" style="min-height:70px"></textarea>
     ${cat.html}
     ${imp.html}
     <div class="actions" style="margin-top:14px"><button class="btn primary">Add task</button><button type="button" class="btn" id="tkx">Cancel</button></div></form>`;
   document.getElementById('tkx').onclick = () => (slot.innerHTML = '');
-  cat.bind(slot); imp.bind(slot);
+  cat.bind(slot); imp.bind(slot); rep.bind(slot);
   document.getElementById('tkf').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('tkt').value.trim(), due_date: document.getElementById('tkd').value || null,
       person_id: document.getElementById('tkp').value || null, detail: document.getElementById('tkn').value.trim() || null };
     if (state.hasCategory) row.category = cat.get();
     if (state.hasImportance) row.importance = imp.get();
-    try { await q(sb.from('tasks').insert(row)); toast('Task added ✓'); slot.innerHTML = ''; onDone(); }
+    const r = rep.get();
+    if (r.k !== 'none' && !row.due_date) { toast('Pick a due date for a repeating task'); e.submitter.disabled = false; return; }
+    try {
+      if (r.k === 'none') { await q(sb.from('tasks').insert(row)); toast('Task added ✓'); }
+      else {
+        const shift = (d, i) => r.k === 'weekly' ? addDays(d, 7 * i) : r.k === 'monthly' ? addMonths(d, i) : addMonths(d, 12 * i);
+        await q(sb.from('tasks').insert(Array.from({ length: r.n }, (_, i) => ({ ...row, due_date: shift(row.due_date, i) }))));
+        toast(`${r.n} ${r.label.toLowerCase()} tasks added ✓`);
+      }
+      slot.innerHTML = ''; onDone();
+    }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('tkt').focus();
