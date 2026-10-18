@@ -14,7 +14,8 @@ import { relColor, tierColor, circleColor, relDefaultHex, tierDefaultHex, REL_KE
 // relationship value as-is (Title Case free text); '' for blank. Custom values
 // stand on their own — no OTHER bucket.
 const relKey = (p) => (p.relationship || '').trim();
-const relLabel = (r) => ({ Professional: 'Work', Friend: 'Friends', Family: 'Family', 'Family Friend': 'Family Friends', Customer: 'Customers', Prospect: 'Prospects', Business: 'Business' }[r] || r || 'Uncategorized');
+// labels show the real stored value — no aliases ("Professional" was showing as "Work")
+const relLabel = (r) => r || 'Uncategorized';
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
@@ -45,13 +46,12 @@ export async function renderDashboard() {
   const relN = {};
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
   const relOrder = [...RELS.filter((r) => relN[r]), ...Object.keys(relN).filter((r) => r && !RELS.includes(r)).sort((a, b) => relN[b] - relN[a])];
-  // dashboard graph stays clean: top 4 by count, everything else under Other
-  const byCount = [...relOrder].sort((a, b) => relN[b] - relN[a]);
-  const topR = byCount.slice(0, 4);
-  const restR = byCount.slice(4);
-  const otherN = restR.reduce((a, r) => a + relN[r], 0);
-  if (relN['']) topR.push('');
-  const relEntries = [...topR.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) })),
+  // graph stays clean: categories with 5+ people get a segment, the rest fold into Other
+  const bigR = relOrder.filter((r) => r && relN[r] >= 5).sort((a, b) => relN[b] - relN[a]);
+  const smallR = relOrder.filter((r) => r && relN[r] < 5);
+  const otherN = smallR.reduce((a, r) => a + relN[r], 0);
+  if (relN['']) bigR.push('');
+  const relEntries = [...bigR.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) })),
     ...(otherN ? [{ k: '__other__', l: 'Other', n: otherN, c: relColor('__other__') }] : [])];
   const tierEntries = [...TIERS.map((tr) => ({ k: tr, l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: tierColor(tr) })),
     { k: '__none', l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: tierColor('') }];
@@ -124,7 +124,7 @@ export async function renderDashboard() {
   $view.querySelectorAll('.mixlink').forEach((b) => (b.onclick = () => {
     const F = state.peopleFilter;
     F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear();
-    if (b.dataset.g === 'rels' && b.dataset.k === '__other__') restR.forEach((k) => F.rels.add(k));
+    if (b.dataset.g === 'rels' && b.dataset.k === '__other__') smallR.forEach((k) => F.rels.add(k));
     else ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
     location.hash = '#/people';
   }));
@@ -525,6 +525,9 @@ export async function renderPeople() {
     ...RELS.filter((r) => relN(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
     ...Object.entries(relCustomN).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
   ];
+  const relBig = relRows.filter((r) => r.n >= 5);
+  const relSmall = relRows.filter((r) => r.n < 5);
+  const relOtherN = relSmall.reduce((a, r) => a + r.n, 0);
   const circleRank = {};
   [...circles].sort((a, b) => circleN(b) - circleN(a)).forEach((c, i) => { circleRank[c] = i; });
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
@@ -539,7 +542,8 @@ export async function renderPeople() {
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
       ${fgroup('tiers', 'Tiers', 'tiers', `${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t), dot(tierColor(t)))}</button>`).join('')}
         <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN, dot(tierColor('')))}</button>`)}
-      ${fgroup('rels', 'Relationship', 'rels', `${relRows.map((r) => `<button class="chk ${F.rels.has(r.k) ? 'on' : ''}" data-rel="${esc(r.k)}" aria-pressed="${F.rels.has(r.k)}">${chk(0, r.label, r.n, dot(r.c))}</button>`).join('')}
+      ${fgroup('rels', 'Relationship', 'rels', `${relBig.map((r) => `<button class="chk ${F.rels.has(r.k) ? 'on' : ''}" data-rel="${esc(r.k)}" aria-pressed="${F.rels.has(r.k)}">${chk(0, r.label, r.n, dot(r.c))}</button>`).join('')}
+        ${relOtherN ? `<button class="chk ${relSmall.length && relSmall.every((r) => F.rels.has(r.k)) ? 'on' : ''}" data-rel="__other" aria-pressed="${relSmall.length && relSmall.every((r) => F.rels.has(r.k))}">${chk(0, 'Other', relOtherN, dot('var(--rel-other)'))}</button>` : ''}
         <button class="chk ${F.rels.has('__none') ? 'on' : ''}" data-rel="__none" aria-pressed="${F.rels.has('__none')}">${chk(0, 'Uncategorized', noRelN, dot('var(--rel-none)'))}</button>`)}
       ${fgroup('circles', 'Circles', 'circles', `${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c), dot(circleColor(c, circleRank[c])))}</button>`).join('')}
         <button class="chk ${F.circles.has('__none') ? 'on' : ''}" data-circle="__none" aria-pressed="${F.circles.has('__none')}">${chk(0, 'Unassigned', noCircleN)}</button>`)}
@@ -567,7 +571,13 @@ export async function renderPeople() {
   };
   $view.querySelectorAll('[data-tier]').forEach((b) => (b.onclick = () => toggle(F.tiers, b.dataset.tier, b)));
   $view.querySelectorAll('[data-circle]').forEach((b) => (b.onclick = () => toggle(F.circles, b.dataset.circle, b)));
-  $view.querySelectorAll('[data-rel]').forEach((b) => (b.onclick = () => toggle(F.rels, b.dataset.rel, b)));
+  $view.querySelectorAll('[data-rel]').forEach((b) => (b.onclick = () => {
+    if (b.dataset.rel === '__other') {
+      const allOn = relSmall.length > 0 && relSmall.every((r) => F.rels.has(r.k));
+      relSmall.forEach((r) => { if (allOn) F.rels.delete(r.k); else F.rels.add(r.k); });
+      renderPeople();
+    } else toggle(F.rels, b.dataset.rel, b);
+  }));
   $view.querySelectorAll('[data-clear]').forEach((b) => (b.onclick = () => {
     ({ tiers: F.tiers, circles: F.circles, rels: F.rels }[b.dataset.clear]).clear(); renderPeople();
   }));
