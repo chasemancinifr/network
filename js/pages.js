@@ -173,7 +173,7 @@ export async function renderActions() {
   setHead({ kicker: 'Follow-ups + tasks', title: 'Actions', tab: 'actions', add: true });
   const s = state.actionStatus; // open | parked | done
   const ty = state.actionType;   // all | fu | task
-  const catSel = 'id,title,due_date,status,created_at,completed_at' + (state.hasCategory ? ',category' : '') + ',person:people(id,name,tier)';
+  const catSel = 'id,title,due_date,status,created_at,completed_at' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + ',person:people(id,name,tier)';
   const [fus, taskRes] = await Promise.all([
     q(sb.from('follow_ups').select(catSel).order('created_at', { ascending: false }).limit(2000)),
     sb.from('tasks').select(catSel).order('created_at', { ascending: false }).limit(2000),

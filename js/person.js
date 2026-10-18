@@ -1,7 +1,7 @@
 // Person panel: full record view + add/edit form.
 
 import { sb, q, loadPeople, personTasks } from './db.js';
-import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField } from './ui.js';
+import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
@@ -93,17 +93,20 @@ export async function renderPerson(id) {
   };
   document.getElementById('fuBtn').onclick = () => {
     const cat = categoryField(null);
+    const imp = importanceField(null);
     slot.innerHTML = `<form class="card form" id="ff" style="margin-top:12px">
       <label class="lbl">Follow-up</label><input class="field" id="ft" required placeholder="What needs to happen">
       <label class="lbl">Due date (only if you actually have one)</label><input class="field" type="date" id="fd">
       ${cat.html}
+      ${imp.html}
       <div class="actions" style="margin-top:14px"><button class="btn primary">Add</button><button type="button" class="btn" id="cx">Cancel</button></div></form>`;
     document.getElementById('cx').onclick = () => (slot.innerHTML = '');
-    cat.bind(slot);
+    cat.bind(slot); imp.bind(slot);
     document.getElementById('ff').onsubmit = async (e) => {
       e.preventDefault(); e.submitter && (e.submitter.disabled = true);
       const row = { person_id: id, title: document.getElementById('ft').value.trim(), due_date: document.getElementById('fd').value || null };
       if (state.hasCategory) row.category = cat.get();
+      if (state.hasImportance) row.importance = imp.get();
       try { await q(sb.from('follow_ups').insert(row)); toast('Added ✓'); renderPerson(id); }
       catch { e.submitter && (e.submitter.disabled = false); }
     };

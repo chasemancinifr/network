@@ -1,7 +1,7 @@
 // Chrome: DOM refs, page header, slide-over panel, toast, visual primitives, theme.
 // Presentation only — no data fetching here.
 
-import { state, ACTION_CATEGORIES } from './config.js';
+import { state, ACTION_CATEGORIES, ACTION_IMPORTANCE } from './config.js';
 import { esc, fmtDate, ago, dueInfo, today } from './utils.js';
 
 export const $view = document.getElementById('view');
@@ -125,3 +125,24 @@ export function categoryField(selected) {
 }
 // small badge for action rows; empty when uncategorized
 export const catBadge = (c) => (c ? `<span class="typebadge">${esc(c)}</span>` : '');
+
+// ---------- action importance (follow-ups + tasks) ----------
+// Pill selector for the follow-up/task forms. Renders nothing until the 0004
+// migration has added the importance column (state.hasImportance, probed at boot).
+// Defaults to neutral; only urgent/high/medium get a badge on rows.
+export function importanceField(selected) {
+  if (!state.hasImportance) return { html: '', bind() {}, get: () => null };
+  let sel = ACTION_IMPORTANCE.includes(selected) ? selected : 'neutral';
+  return {
+    html: `<label class="lbl">Importance</label><div class="pills" data-imppills>${ACTION_IMPORTANCE.map((c) => `<button type="button" class="pill${sel === c ? ' on' : ''}" data-i="${c}">${c}</button>`).join('')}</div>`,
+    bind(root) {
+      root.querySelectorAll('[data-imppills] [data-i]').forEach((b) => (b.onclick = () => {
+        sel = b.dataset.i;
+        root.querySelectorAll('[data-imppills] [data-i]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    },
+    get: () => sel,
+  };
+}
+const IMP_COLORS = { urgent: 'var(--red)', high: 'var(--amber)', medium: '#7d99a8' };
+export const impBadge = (i) => (IMP_COLORS[i] ? `<span class="typebadge" style="color:${IMP_COLORS[i]};border-color:${IMP_COLORS[i]}">${esc(i)}</span>` : '');
