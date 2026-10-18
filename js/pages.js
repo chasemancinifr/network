@@ -9,53 +9,87 @@ import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 
-// ---------- dashboard = the big picture. No action items live here. ----------
+// ---------- dashboard = the big picture ----------
 const REL_COLORS = { Professional: 'var(--rel-professional)', Friend: 'var(--rel-friend)', Family: 'var(--rel-family)', 'Family Friend': 'var(--rel-familyfriend)', Customer: 'var(--rel-customer)', Prospect: 'var(--rel-prospect)', Business: 'var(--rel-business)', OTHER: 'var(--rel-other)', '': 'var(--rel-none)' };
 const REL_LABELS = { Professional: 'work', Friend: 'friends', Family: 'family', 'Family Friend': 'family friends', Customer: 'customers', Prospect: 'prospects', Business: 'business', OTHER: 'other', '': 'uncategorized' };
 // relationship bucket: standard category, OTHER for custom values, '' for blank
 const relKey = (p) => { const r = (p.relationship || '').trim(); return r ? (RELS.includes(r) ? r : 'OTHER') : ''; };
 const relLabel = (r) => ({ Professional: 'Work', Friend: 'Friends', Family: 'Family', 'Family Friend': 'Family Friends', Customer: 'Customers', Prospect: 'Prospects', Business: 'Business', OTHER: 'Other' }[r] || r);
+const TIER_COLORS = { A: 'var(--amber)', B: '#7fa07a', C: '#7d99a8', D: '#e0654d', '': '#6e6e6e' };
+const CIRCLE_COLORS = ['#d2a24c', '#7fa07a', '#c08b5c', '#7d99a8', '#a8716a', '#a08b62', '#d9704a', '#8d8578'];
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
-  const [people, intRows] = await Promise.all([loadPeople(),
-    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(t, -63)).limit(2000))]);
+  const [people, intRows, fus, tasks, evs] = await Promise.all([loadPeople(),
+    q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(t, -63)).limit(2000)),
+    openFollowups(), openTasksSoft(), loadEvents()]);
   const streak = streakOf(intRows, t);
   const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -7)).length;
   const newMonth = people.filter((p) => p.created_at && p.created_at.slice(0, 7) === t.slice(0, 7)).length;
   const stale = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 60)
     .sort((a, b) => daysBetween(b.last_contact, t) - daysBetween(a.last_contact, t)).slice(0, 8);
   const bdays = upcomingBirthdays(people, 21);
+
+  // ---- network mix: one bar per dimension ----
+  const mixParts = (entries) => {
+    const total = entries.reduce((a, e) => a + e.n, 0) || 1;
+    return {
+      bar: entries.map((e) => `<span style="width:${(e.n / total * 100).toFixed(1)}%;background:${e.c}" title="${esc(e.l)}: ${e.n}"></span>`).join(''),
+      legend: entries.map((e) => `<span><i class="dotk" style="background:${e.c}"></i><b>${e.n}</b> ${esc(e.l)}</span>`).join(''),
+    };
+  };
+  const mixLine = (label, entries, note) => {
+    const m = mixParts(entries.filter((e) => e.n));
+    return `<div class="mixlabel">${esc(label)}</div><div class="relbar">${m.bar}</div><div class="rel-legend">${m.legend}</div>${note ? `<p class="note">${note}</p>` : ''}`;
+  };
   const relN = {};
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
-  const relOrder = [...RELS, 'OTHER', ''];
-  const bar = relOrder.filter((r) => relN[r]).map((r) =>
-    `<span style="width:${(relN[r] / people.length * 100).toFixed(1)}%;background:${REL_COLORS[r]}" title="${REL_LABELS[r]}: ${relN[r]}"></span>`).join('');
-  const legend = relOrder.filter((r) => relN[r]).map((r) =>
-    `<span><i class="dotk" style="background:${REL_COLORS[r]}"></i><b>${relN[r]}</b> ${REL_LABELS[r]}</span>`).join('');
+  const relEntries = [...RELS, 'OTHER', ''].map((r) => ({ l: REL_LABELS[r], n: relN[r] || 0, c: REL_COLORS[r] }));
+  const tierEntries = [...TIERS.map((tr) => ({ l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: TIER_COLORS[tr] })),
+    { l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: TIER_COLORS[''] }];
+  const circleCounts = {};
+  people.forEach((p) => (p.circles || []).forEach((c) => { circleCounts[c] = (circleCounts[c] || 0) + 1; }));
+  const circleEntries = Object.entries(circleCounts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([c, n], i) => ({ l: c, n, c: CIRCLE_COLORS[i % CIRCLE_COLORS.length] }));
+
+  // ---- events coming up + quick reminders ----
+  const upcoming = evs.filter((e) => e.event_date >= t).slice(0, 6);
+  const reminders = [
+    ...fus.map((f) => ({ due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
+    ...tasks.map((x) => ({ due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
+  ].sort((a, b) => (a.due || '9999') < (b.due || '9999') ? -1 : 1).slice(0, 5);
+
   $view.innerHTML = `
     <div class="stats">
       <span class="stat"><span class="k">People</span><span class="v">${people.length}</span></span>
-      <span class="stat"><span class="k">Added · ${t.slice(0, 7)}</span><span class="v">${newMonth}</span></span>
-      <span class="stat"><span class="k">Day streak</span><span class="v">${streak ? streak : '–'}</span></span>
+      <span class="stat"><span class="k">Added \u00b7 ${t.slice(0, 7)}</span><span class="v">${newMonth}</span></span>
+      <span class="stat"><span class="k">Day streak</span><span class="v">${streak ? streak : '\u2013'}</span></span>
       <span class="stat ${stale.length ? 'red' : ''}"><span class="k">Going stale</span><span class="v">${stale.length}</span></span>
     </div>
     <div class="card" style="margin-top:12px;padding:14px">
       ${sec('Network mix')}
-      <div class="relbar">${bar}</div>
-      <div class="rel-legend">${legend}</div>
-      ${relN[''] ? `<p class="note">${relN['']} people still need a relationship category.</p>` : ''}
+      ${mixLine('Relationships', relEntries, relN[''] ? `${relN['']} people still need a relationship category.` : '')}
+      ${mixLine('Tiers', tierEntries, '')}
+      ${mixLine('Circles \u00b7 top 8', circleEntries, '')}
     </div>
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Going stale', stale.length, '', stale.length ? 'red' : '')}
       ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)))).join('')}</ul>` : '<div class="card empty">Nobody\u2019s drifting. The cadences are holding.</div>'}
+      ${sec('Events coming up', upcoming.length)}
+      ${upcoming.length ? evList(upcoming, '', true) : '<div class="card empty">Nothing on the calendar.</div>'}
+      <div id="evSlot"></div>
     </div><div class="dash-side">
-      ${sec('Conversations · 7 days', ints7)}
+      ${sec('Conversations \u00b7 7 days', ints7)}
       <div class="card pulse"><div class="pulse-row"><span>Logged this week</span><b>${ints7}</b></div>
-      <div class="pulse-row"><span>Day streak</span><b>${streak ? streak + '-day' : '–'}</b></div></div>
-      ${bdays.length ? `${sec('Birthdays · next 3 weeks', bdays.length)}<ul class="list card">${bdays.map((x) => personRow(x.p, st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`))).join('')}</ul>` : ''}
+      <div class="pulse-row"><span>Day streak</span><b>${streak ? streak + '-day' : '\u2013'}</b></div></div>
+      ${sec('Quick reminders', reminders.length)}
+      ${reminders.length ? `<div class="card"><ul class="list">${reminders.map((r) => r.html).join('')}</ul></div>` : '<div class="card empty">Nothing pressing.</div>'}
+      ${bdays.length ? `${sec('Birthdays \u00b7 next 3 weeks', bdays.length)}<ul class="list card">${bdays.map((x) => personRow(x.p, st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`))).join('')}</ul>` : ''}
     </div></div>
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
+  bindFollowups(renderDashboard);
+  bindTasks(renderDashboard);
+  bindEvents(renderDashboard, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderDashboard));
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
 
