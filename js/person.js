@@ -155,7 +155,7 @@ export async function renderEdit(id) {
   document.getElementById('ef').onsubmit = async (e) => {
     e.preventDefault();
     const name = v('name');
-    if (people.some((x) => x.id !== id && x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase()))) {
+    if (people.some((x) => x.id !== id && (x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase())))) {
       toast(`${name} is already in your network`, true); return;
     }
     const row = { name, tier: tier || null, circles: [...sel], relationship: titleCase(v('relationship')) || null, role: v('role'), dept: v('dept'), org: v('org'),
