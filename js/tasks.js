@@ -1,9 +1,9 @@
 // Tasks: general to-dos. Follow-ups stay person-centric nudges. A task may
 // link a person and may carry a due date — neither is required.
 
-import { sb, q, loadPeople } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField } from './ui.js';
-import { esc, today, addDays, addMonths } from './utils.js';
+import { sb, q, loadPeople, seriesSiblings, scopeRows, shiftSeriesDate } from './db.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel } from './ui.js';
+import { esc, today } from './utils.js';
 import { state } from './config.js';
 
 export function taskStatus(t) {
@@ -61,8 +61,10 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
     try {
       if (r.k === 'none') { await q(sb.from('tasks').insert(row)); toast('Task added ✓'); }
       else {
-        const shift = (d, i) => r.k === 'weekly' ? addDays(d, 7 * i) : r.k === 'monthly' ? addMonths(d, i) : addMonths(d, 12 * i);
-        await q(sb.from('tasks').insert(Array.from({ length: r.n }, (_, i) => ({ ...row, due_date: shift(row.due_date, i) }))));
+        const sid = state.hasSeries ? crypto.randomUUID() : null;
+        await q(sb.from('tasks').insert(Array.from({ length: r.n }, (_, i) => ({ ...row,
+          due_date: shiftSeriesDate(r.k, row.due_date, i),
+          ...(sid ? { series_id: sid, series_rule: r.k, series_index: i } : {}) }))));
         toast(`${r.n} ${r.label.toLowerCase()} tasks added ✓`);
       }
       slot.innerHTML = ''; onDone();
@@ -74,12 +76,15 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
 
 // ---------- edit task (panel) ----------
 export async function editTask(taskId, rerender) {
-  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '');
+  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + (state.hasSeries ? ',series_id,series_rule,series_index' : '');
   const t = await q(sb.from('tasks').select(fields).eq('id', taskId).single());
   if (!t) return;
   const people = await loadPeople();
   const cat = categoryField(t.category);
   const imp = importanceField(t.importance);
+  const siblings = t.series_id ? await seriesSiblings('tasks', t.series_id) : [];
+  const isSeries = siblings.length > 1;
+  const scp = isSeries ? seriesScopeField(seriesNote(t.series_rule, t.series_index, siblings.length)) : null;
   openPanel();
   const who = people.find((p) => p.id === t.person_id);
   panelHead({ kicker: who ? who.name : 'Task', title: 'Edit task' });
@@ -91,21 +96,46 @@ export async function editTask(taskId, rerender) {
     <label class="lbl" for="te_detail">Detail (optional)</label><textarea class="field" id="te_detail" style="min-height:90px">${esc(t.detail || '')}</textarea>
     ${cat.html}
     ${imp.html}
+    ${scp ? scp.html : ''}
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
   document.getElementById('te_cancel').onclick = () => dismissPanel();
   document.getElementById('te_del').onclick = async (e) => {
     const b = e.currentTarget;
+    if (isSeries) {
+      openSeriesDeletePanel({
+        kicker: 'Delete task', title: 'Delete repeating task?',
+        note: `This is part of a ${t.series_rule} series (${siblings.length} tasks).`,
+        onScope: async (scope) => {
+          if (!scope) return;
+          for (const s of scopeRows(siblings, t.series_index, scope)) await q(sb.from('tasks').delete().eq('id', s.id));
+          closePanel(); toast('Deleted'); rerender();
+        },
+      });
+      return;
+    }
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
     b.disabled = true; await q(sb.from('tasks').delete().eq('id', taskId)); toast('Deleted'); closePanel(); rerender();
   };
   cat.bind(root); imp.bind(root);
+  if (scp) scp.bind(root);
   document.getElementById('tef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('te_title').value.trim(), detail: document.getElementById('te_detail').value.trim() || null,
       due_date: document.getElementById('te_due').value || null, person_id: document.getElementById('te_person').value || null };
     if (state.hasCategory) row.category = cat.get();
     if (state.hasImportance) row.importance = imp.get();
-    try { await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓'); closePanel(); rerender(); }
+    try {
+      if (!scp || scp.get() === 'one') {
+        await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓');
+      } else {
+        const targets = scopeRows(siblings, t.series_index, scp.get());
+        for (const s of targets) {
+          await q(sb.from('tasks').update({ ...row, due_date: row.due_date ? shiftSeriesDate(t.series_rule, row.due_date, s.series_index - t.series_index) : null }).eq('id', s.id));
+        }
+        toast(`Updated ${targets.length} tasks ✓`);
+      }
+      closePanel(); rerender();
+    }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('te_title').focus();

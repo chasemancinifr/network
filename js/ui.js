@@ -153,6 +153,38 @@ export const impRank = (i) => IMP_RANK[i] ?? 3;
 export const actDot = (e) => (!e || !e.n) ? ''
   : `<span class="actdot" style="--c:${IMP_COLORS[e.top] || IMP_COLORS.neutral}" title="${e.n} open action${e.n === 1 ? '' : 's'}${e.top && e.top !== 'neutral' ? ` · ${e.top}` : ''}">${e.n}</span>`;
 
+// ---------- series scope (repeating events/tasks) ----------
+// Scope pills for editing a series member: only this / this & following / entire series.
+export function seriesScopeField(note) {
+  let sel = 'one';
+  const opts = [['one', 'Only this'], ['following', 'This & following'], ['all', 'Entire series']];
+  return {
+    html: `${note ? `<p class="note">${note}</p>` : ''}<label class="lbl">Apply to</label><div class="pills" data-scopepills>${opts.map(([k, l]) => `<button type="button" class="pill${sel === k ? ' on' : ''}" data-s="${k}">${l}</button>`).join('')}</div>`,
+    bind(root) {
+      root.querySelectorAll('[data-scopepills] [data-s]').forEach((b) => (b.onclick = () => {
+        sel = b.dataset.s;
+        root.querySelectorAll('[data-scopepills] [data-s]').forEach((x) => x.classList.toggle('on', x === b));
+      }));
+    },
+    get: () => sel,
+  };
+}
+// Delete panel for a series member; onScope(scope|null) performs the delete
+// (null = cancelled) and closes the panel itself.
+export function openSeriesDeletePanel({ kicker, title, note, onScope }) {
+  openPanel();
+  panelHead({ kicker, title });
+  $pBody.innerHTML = `<div class="card form"><p class="note">${note}</p>
+    <div class="actions" style="flex-direction:column;align-items:stretch;gap:8px">
+      <button class="btn" data-ds="one">Delete only this one</button>
+      <button class="btn" data-ds="following">Delete this & following</button>
+      <button class="btn danger" data-ds="all">Delete entire series</button>
+      <button class="btn" id="sdcancel">Cancel</button>
+    </div></div>`;
+  $pBody.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => onScope(b.dataset.ds)));
+  document.getElementById('sdcancel').onclick = () => { closePanel(); onScope(null); };
+}
+export const seriesNote = (rule, idx, n) => `Repeating · ${rule[0].toUpperCase() + rule.slice(1)} · ${idx + 1} of ${n}`;
 // ---------- repeat selector (events + tasks, create only) ----------
 // Materializes N dated instances (weekly x12, monthly x12, yearly x10).
 // Each instance is a real row, editable/deletable on its own.

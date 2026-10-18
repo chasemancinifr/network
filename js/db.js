@@ -3,6 +3,7 @@
 import { createClient } from '../supabase.js';
 import { SUPABASE_URL, SUPABASE_KEY, state } from './config.js';
 import { toast, impRank } from './ui.js';
+import { addDays, addMonths } from './utils.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 
@@ -26,6 +27,31 @@ export const openFollowups = () => q(sb.from('follow_ups').select('id,title,due_
 // deliberately separate from follow-ups, which are action items
 export const loadEvents = () => q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
   .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
+// series-column probe: the 0005 migration may not have been run yet.
+// Repeating creates still work without it (standalone copies); the
+// edit/delete scope UI only appears once the columns exist.
+export async function probeSeries() {
+  try {
+    const { error } = await Promise.race([
+      sb.from('events').select('id,series_id').limit(1),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('probe timeout')), 6000)),
+    ]);
+    state.hasSeries = !error;
+  } catch { state.hasSeries = false; }
+  return state.hasSeries;
+}
+// siblings of a series, ordered by position; [] when not a series member
+export async function seriesSiblings(table, seriesId) {
+  if (!state.hasSeries || !seriesId) return [];
+  const { data, error } = await sb.from(table).select('id,series_index').eq('series_id', seriesId).order('series_index');
+  return error ? [] : (data || []);
+}
+// shift a YYYY-MM-DD by `steps` of a repeat rule (weekly/monthly/yearly)
+export const shiftSeriesDate = (rule, d, steps) =>
+  rule === 'weekly' ? addDays(d, 7 * steps) : rule === 'monthly' ? addMonths(d, steps) : addMonths(d, 12 * steps);
+// rows of a series in a delete/edit scope: 'one' | 'following' | 'all'
+export const scopeRows = (siblings, idx, scope) =>
+  siblings.filter((s) => scope === 'all' ? true : scope === 'following' ? s.series_index >= idx : s.series_index === idx);
 // per-person open-action counts with the highest importance level, for the
 // notification dot on person rows. Null importance counts as neutral.
 // Pure builder (pages that already loaded the rows reuse it); openActionMap
