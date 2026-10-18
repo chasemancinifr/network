@@ -54,6 +54,19 @@ function bootFail() {
 export function boot() {
   window.addEventListener('hashchange', route);
   $add.onclick = () => openNewMenu();
+  const moreBtn = document.getElementById('moreBtn');
+  const moreSheet = document.getElementById('moreSheet');
+  const moreScrim = document.getElementById('moreScrim');
+  const closeMore = () => { moreSheet.hidden = true; moreScrim.hidden = true; moreBtn.setAttribute('aria-expanded', 'false'); };
+  moreBtn.onclick = () => {
+    const opening = moreSheet.hidden;
+    closeMore();
+    if (opening) { moreSheet.hidden = false; moreScrim.hidden = false; moreBtn.setAttribute('aria-expanded', 'true'); }
+  };
+  moreScrim.onclick = closeMore;
+  moreSheet.querySelectorAll('a').forEach((a) => a.addEventListener('click', closeMore));
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });
+  window.addEventListener('hashchange', closeMore);
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
     if (!!session !== was) { state.people = null; probeActionCategory().then(() => probeActionImportance()).then(() => probeSeries()).then(() => route()); }

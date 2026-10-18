@@ -2,7 +2,7 @@
 
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank } from './ui.js';
-import { today, fmtDate, daysBetween, addDays, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
+import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
 import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
@@ -45,8 +45,14 @@ export async function renderDashboard() {
   const relN = {};
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
   const relOrder = [...RELS.filter((r) => relN[r]), ...Object.keys(relN).filter((r) => r && !RELS.includes(r)).sort((a, b) => relN[b] - relN[a])];
-  if (relN['']) relOrder.push('');
-  const relEntries = relOrder.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) }));
+  // dashboard graph stays clean: top 4 by count, everything else under Other
+  const byCount = [...relOrder].sort((a, b) => relN[b] - relN[a]);
+  const topR = byCount.slice(0, 4);
+  const restR = byCount.slice(4);
+  const otherN = restR.reduce((a, r) => a + relN[r], 0);
+  if (relN['']) topR.push('');
+  const relEntries = [...topR.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) })),
+    ...(otherN ? [{ k: '__other__', l: 'Other', n: otherN, c: relColor('__other__') }] : [])];
   const tierEntries = [...TIERS.map((tr) => ({ k: tr, l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: tierColor(tr) })),
     { k: '__none', l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: tierColor('') }];
   const circleCounts = {};
@@ -118,7 +124,8 @@ export async function renderDashboard() {
   $view.querySelectorAll('.mixlink').forEach((b) => (b.onclick = () => {
     const F = state.peopleFilter;
     F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear();
-    ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
+    if (b.dataset.g === 'rels' && b.dataset.k === '__other__') restR.forEach((k) => F.rels.add(k));
+    else ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
     location.hash = '#/people';
   }));
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
@@ -385,15 +392,22 @@ export async function renderInteractions() {
   const t = today();
   const inLast = (n) => ints.filter((i) => i.happened_at && i.happened_at >= addDays(t, -n)).length;
   const kindN = (k) => ints.filter((i) => i.kind === k).length;
-  const mk = t.slice(0, 7);
+  // week-scoped insights + scoreboard: state.intWeek 0 = current week (Monday start)
+  const wkStart = addDays(mondayOf(t), -7 * state.intWeek);
+  const wkEnd = addDays(wkStart, 6);
+  const wkLabel = state.intWeek === 0 ? 'This week' : `${monoDate(wkStart)} – ${monoDate(wkEnd)}`;
+  const inWk = (d0, d1) => ints.filter((i) => i.happened_at && i.happened_at.slice(0, 10) >= d0 && i.happened_at.slice(0, 10) <= d1);
+  const wkInts = inWk(wkStart, wkEnd);
+  const pvInts = inWk(addDays(wkStart, -7), addDays(wkStart, -1));
   const talkCounts = {};
-  ints.forEach((i) => {
-    if (i.person && i.happened_at && i.happened_at.slice(0, 7) === mk) {
-      (talkCounts[i.person.id] ||= { p: i.person, n: 0 }).n++;
-    }
-  });
+  wkInts.forEach((i) => { if (i.person) (talkCounts[i.person.id] ||= { p: i.person, n: 0 }).n++; });
   const topTalk = Object.values(talkCounts).sort((a, b) => b.n - a.n || a.p.name.localeCompare(b.p.name)).slice(0, 5);
-  const monthName = new Date(t + 'T12:00:00').toLocaleDateString(undefined, { month: 'long' });
+  const wkMin = wkInts.reduce((a, i) => a + (i.duration_min || 0), 0);
+  const wkPeople = new Set(wkInts.map((i) => i.person?.id).filter(Boolean)).size;
+  const kc = {};
+  wkInts.forEach((i) => { kc[i.kind] = (kc[i.kind] || 0) + 1; });
+  const topKind = Object.entries(kc).sort((a, b) => b[1] - a[1])[0];
+  const wkDelta = wkInts.length - pvInts.length;
   $view.innerHTML = `
     <div class="stats">
       <span class="stat"><span class="k">All time</span><span class="v">${ints.length}</span></span>
@@ -401,9 +415,24 @@ export async function renderInteractions() {
       <span class="stat"><span class="k">Last 30 days</span><span class="v">${inLast(30)}</span></span>
       <span class="stat"><span class="k">With notes</span><span class="v">${ints.filter((i) => i.summary).length}</span></span>
     </div>
+    <div class="cal-bar"><div class="pills" role="tablist" aria-label="Week">
+      <button class="pill" id="wkPrev">‹ Prev</button>
+      <button class="pill" id="wkNext"${state.intWeek === 0 ? ' disabled' : ''}>Next ›</button>
+      ${state.intWeek ? '<button class="pill" id="wkThis">This week</button>' : ''}
+    </div><span class="mo">${esc(wkLabel)}</span></div>
+    <div class="card board">
+      <div class="board-head"><span>Week insights</span><span class="mono">${esc(wkLabel)}</span></div>
+      <div class="stats" style="border:0;padding:0 0 4px">
+        <span class="stat"><span class="k">Conversations</span><span class="v">${wkInts.length}</span></span>
+        <span class="stat"><span class="k">vs prior week</span><span class="v">${wkDelta >= 0 ? '+' : ''}${wkDelta}</span></span>
+        <span class="stat"><span class="k">Minutes</span><span class="v">${wkMin}</span></span>
+        <span class="stat"><span class="k">People</span><span class="v">${wkPeople}</span></span>
+      </div>
+      ${topKind ? `<div class="meta">Mostly ${esc(topKind[0])}s${wkMin ? ` · ${wkMin} min talking` : ''}</div>` : '<div class="meta">No conversations logged this week.</div>'}
+    </div>
     ${topTalk.length ? `<div class="card board">
-      <div class="board-head"><span>Most talked to</span><span class="mono">${esc(monthName)}</span></div>
-      <ol>${topTalk.map((x, i) => `<li><a class="row" href="#/p/${x.p.id}"><span class="rank">${i + 1}</span><span class="main"><span class="name">${esc(x.p.name)}</span></span><span class="bcount">${x.n} interaction${x.n === 1 ? '' : 's'} this month</span></a></li>`).join('')}</ol>
+      <div class="board-head"><span>Most talked to</span><span class="mono">${esc(wkLabel)}</span></div>
+      <ol>${topTalk.map((x, i) => `<li><a class="row" href="#/p/${x.p.id}"><span class="rank">${i + 1}</span><span class="main"><span class="name">${esc(x.p.name)}</span></span><span class="bcount">${x.n} interaction${x.n === 1 ? '' : 's'} this week</span></a></li>`).join('')}</ol>
     </div>` : ''}
     <div class="cal-bar"><div class="pills" role="tablist">
       ${['all', ...KINDS].map((k) => `<button class="pill ${k === state.intKind ? 'on' : ''}" data-kind="${k}" role="tab" aria-selected="${k === state.intKind}">${k === 'all' ? 'All' : `${k} · ${kindN(k)}`}</button>`).join('')}</div>
@@ -431,6 +460,11 @@ export async function renderInteractions() {
   };
   const qi = document.getElementById('intQ');
   qi.oninput = () => { state.intQ = qi.value; draw(); };
+  document.getElementById('wkPrev').onclick = () => { state.intWeek++; renderInteractions(); };
+  const wkNextBtn = document.getElementById('wkNext');
+  if (wkNextBtn && !wkNextBtn.disabled) wkNextBtn.onclick = () => { state.intWeek--; renderInteractions(); };
+  const wkThisBtn = document.getElementById('wkThis');
+  if (wkThisBtn) wkThisBtn.onclick = () => { state.intWeek = 0; renderInteractions(); };
   $view.querySelectorAll('[data-kind]').forEach((b) => (b.onclick = () => {
     state.intKind = b.dataset.kind;
     $view.querySelectorAll('[data-kind]').forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', x === b); });
@@ -554,19 +588,31 @@ export async function renderCalendar() {
   const t = today();
   if (!state.cal) state.cal = { y: +t.slice(0, 4), m: +t.slice(5, 7) - 1, sel: t };
   const C = state.cal;
+  // dot color = the person's first circle color (falls back to the status class when none)
+  const circleCounts = {};
+  people.forEach((p) => (p.circles || []).forEach((c) => { circleCounts[c] = (circleCounts[c] || 0) + 1; }));
+  const circleRank = {};
+  Object.keys(circleCounts).sort((a, b) => circleCounts[b] - circleCounts[a]).forEach((c, i) => { circleRank[c] = i; });
+  const byId = {};
+  people.forEach((p) => { byId[p.id] = p; });
+  const pCol = (pid) => {
+    const p = pid && byId[pid];
+    const c = p && (p.circles || [])[0];
+    return c ? circleColor(c, circleRank[c] || 0) : null;
+  };
   const key = (y, m, d) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
   const buildEvents = () => {
     const ev = {}; const add = (d, e) => (ev[d] ||= []).push(e);
-    fus.filter((f) => f.due_date).forEach((f) => add(f.due_date, { kind: 'fu', f, cls: f.due_date < t ? 'red' : f.due_date === t ? 'amber' : 'gray' }));
-    tasks.filter((x) => x.due_date).forEach((x) => add(x.due_date, { kind: 'task', t: x, cls: x.due_date < t ? 'red' : x.due_date === t ? 'amber' : 'gray' }));
-    evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber' }));
-    ints.forEach((i) => { if (i.happened_at) add(i.happened_at.slice(0, 10), { kind: 'int', i, cls: 'past' }); });
+    fus.filter((f) => f.due_date).forEach((f) => add(f.due_date, { kind: 'fu', f, cls: f.due_date < t ? 'red' : f.due_date === t ? 'amber' : 'gray', col: pCol(f.person?.id) }));
+    tasks.filter((x) => x.due_date).forEach((x) => add(x.due_date, { kind: 'task', t: x, cls: x.due_date < t ? 'red' : x.due_date === t ? 'amber' : 'gray', col: pCol(x.person?.id) }));
+    evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber', col: pCol(e.person?.id) }));
+    ints.forEach((i) => { if (i.happened_at) add(i.happened_at.slice(0, 10), { kind: 'int', i, cls: 'past', col: pCol(i.person?.id) }); });
     people.forEach((p) => {
-      if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray' });
+      if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray', col: pCol(p.id) });
       if (p.cadence_days) {
         const due = p.last_contact ? addDays(p.last_contact, p.cadence_days) : t;
-        add(due, { kind: 'cad', p, cls: due <= t ? 'red' : 'gray', due });
+        add(due, { kind: 'cad', p, cls: due <= t ? 'red' : 'gray', due, col: pCol(p.id) });
       }
     });
     return ev;
@@ -578,7 +624,7 @@ export async function renderCalendar() {
     for (let i = 0; i < lead; i++) cells.push('<div class="cal-day out"></div>');
     for (let d = 1; d <= dim; d++) {
       const k = key(C.y, C.m, d); const items = ev[k] || [];
-      const dots = items.slice(0, 3).map((e) => `<i class="${e.cls}"></i>`).join('');
+      const dots = items.slice(0, 3).map((e) => `<i class="${e.cls}"${e.col ? ` style="background:${e.col};border-color:${e.col}"` : ''}></i>`).join('');
       cells.push(`<button class="cal-day ${k === t ? 'today' : ''} ${k === C.sel ? 'sel' : ''}" data-day="${k}" aria-label="${k}${items.length ? `, ${items.length} items` : ''}"><span class="n">${d}</span><span class="dots">${dots}</span></button>`);
     }
     while (cells.length % 7) cells.push('<div class="cal-day out"></div>');

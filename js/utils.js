@@ -19,6 +19,8 @@ export function fmtDate(d) {
   return dt.toLocaleDateString(undefined, opts);
 }
 export function daysBetween(a, b) { return Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 86400000); }
+// mondayOf: Monday (YYYY-MM-DD) of the week containing dstr
+export function mondayOf(dstr) { const d = new Date(dstr + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toLocaleDateString('en-CA'); }
 export function addDays(d, n) { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toLocaleDateString('en-CA'); }
 // addMonths: month arithmetic on YYYY-MM-DD with end-of-month clamping
 // (Jan 31 + 1 month -> Feb 28, not Mar 3)

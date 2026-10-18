@@ -24,6 +24,7 @@ export const state = {
   hasSeries: false, // set true at boot once the 0005 migration's columns exist
   intKind: 'all',
   intQ: '',
+  intWeek: 0,
   base: '#/today',
   baseRendered: false,
   cal: null,
