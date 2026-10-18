@@ -8,6 +8,7 @@ import { renderDashboard, renderToday, renderPeople, renderOverdue, renderAction
 import { renderPerson, renderEdit } from './person.js';
 import { renderLogin, renderPassword } from './auth.js';
 import { openNewMenu } from './new.js';
+import { pullSettings, pushSettings } from './settings.js';
 
 // ---------- router ----------
 const BASE = { '#/dashboard': renderDashboard, '#/today': renderToday, '#/people': renderPeople, '#/overdue': renderOverdue, '#/actions': renderActions, '#/interactions': renderInteractions, '#/recent': renderRecent, '#/calendar': renderCalendar, '#/settings': renderSettings };
@@ -54,6 +55,8 @@ function bootFail() {
 export function boot() {
   window.addEventListener('hashchange', route);
   $add.onclick = () => openNewMenu();
+  // theme button (ui.js) saves locally first; this then syncs it to the other devices
+  document.getElementById('themeBtn').addEventListener('click', () => { if (state.session) pushSettings(); });
   const moreBtn = document.getElementById('moreBtn');
   const moreSheet = document.getElementById('moreSheet');
   const moreScrim = document.getElementById('moreScrim');
@@ -69,7 +72,7 @@ export function boot() {
   window.addEventListener('hashchange', closeMore);
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
-    if (!!session !== was) { state.people = null; probeActionCategory().then(() => probeActionImportance()).then(() => probeSeries()).then(() => route()); }
+    if (!!session !== was) { state.people = null; (session ? pullSettings() : Promise.resolve()).then(() => probeActionCategory()).then(() => probeActionImportance()).then(() => probeSeries()).then(() => route()); }
   });
 
   let bootDone = false;
@@ -80,6 +83,7 @@ export function boot() {
     try {
       const { data } = await sb.auth.getSession();
       state.session = data.session;
+      if (state.session) await pullSettings();
       await probeActionCategory();
       await probeActionImportance();
       await probeSeries();

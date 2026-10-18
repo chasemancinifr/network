@@ -3,7 +3,7 @@
 import { sb, q, loadPeople, personTasks, buildActionMap } from './db.js';
 import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField, actDot } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
-import { state, TIERS, KINDS } from './config.js';
+import { state, TIERS, KINDS, RELS, FAMILY_ROLES } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
 import { taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
@@ -130,6 +130,8 @@ export async function renderEdit(id) {
   panelHead({ kicker: id ? 'Edit record' : 'New record', title: id ? p.name : 'New person' });
   const allCircles = [...new Set(['Family', 'Family Friend', 'Friend', 'Mohawk Honda', 'Business', 'Customers', 'Social Media', 'Household', 'Leadership', ...people.flatMap((x) => x.circles || [])])].sort();
   const sel = new Set(p.circles || []);
+  // relationship stays free text; suggestions = standard values + everything already used
+  const relSuggest = [...new Set([...RELS, ...FAMILY_ROLES, ...people.map((x) => (x.relationship || '').trim()).filter(Boolean)])].sort();
   const inp = (key, label, type = 'text', extra = '') => `<label class="lbl" for="e_${key}">${label}</label><input class="field" id="e_${key}" type="${type}" value="${esc(p[key] ?? '')}" ${extra}>`;
   const root = $pBody;
   root.innerHTML = `<form class="card form" id="ef">
@@ -137,7 +139,7 @@ export async function renderEdit(id) {
     <label class="lbl">Tier</label><div class="pills" id="tierSeg" style="flex-wrap:wrap">${['', ...TIERS].map((t) => `<button type="button" class="pill ${(p.tier || '') === t ? 'on' : ''}" data-t="${t}">${t ? `Tier ${t}` : 'None'}</button>`).join('')}</div>
     <label class="lbl">Circles</label><div class="pills" style="flex-wrap:wrap">${allCircles.map((c) => `<button type="button" class="pill ${sel.has(c) ? 'on' : ''}" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <div class="grid2">
-      <div>${inp('relationship', 'Relationship')}</div><div>${inp('role', 'Role')}</div>
+      <div>${inp('relationship', 'Relationship', 'text', 'list="relList" autocomplete="off" placeholder="Type anything, e.g. Uncle on dad\u2019s side"')}<datalist id="relList">${relSuggest.map((r) => `<option value="${esc(r)}">`).join('')}</datalist></div><div>${inp('role', 'Role')}</div>
       <div>${inp('dept', 'Dept')}</div><div>${inp('org', 'Org')}</div>
       <div>${inp('phone', 'Phone', 'tel')}</div><div>${inp('email', 'Email', 'email')}</div>
       <div>${inp('location', 'Location')}</div><div>${inp('cadence_days', 'Cadence · days', 'number', 'min="1" placeholder="None"')}</div>

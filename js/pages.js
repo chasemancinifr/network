@@ -3,11 +3,14 @@
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank, toast, $pBody, personPicker, bindPersonPickers } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
-import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES } from './config.js';
+import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES, isFamilyRel } from './config.js';
+// family values present, known roles first (Parent, Sibling, ...), then custom ones by count
+const famOrder = (vals, n) => [...FAMILY_VALUES.filter((r) => vals.includes(r)), ...vals.filter((r) => !FAMILY_VALUES.includes(r)).sort((a, b) => n(b) - n(a) || a.localeCompare(b))];
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
 import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
+import { pushSettings } from './settings.js';
 import { relColor, tierColor, circleColor, relDefaultHex, tierDefaultHex, REL_KEYS, TIER_KEYS, CIRCLE_PALETTE, getColorOverrides, setColorOverride, resetColorOverrides } from './colors.js';
 
 // ---------- dashboard = the big picture ----------
@@ -25,8 +28,12 @@ export async function renderDashboard() {
   const streak = streakOf(intRows, t);
   const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -7)).length;
   const newMonth = people.filter((p) => p.created_at && p.created_at.slice(0, 7) === t.slice(0, 7)).length;
-  const stale = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 60)
-    .sort((a, b) => daysBetween(b.last_contact, t) - daysBetween(a.last_contact, t)).slice(0, 8);
+  // needs attention: Tier A/B with no logged conversation in 30+ days (never logged counts).
+  // Mohawk Honda people are left out: Chase sees them daily, so a contact timer says nothing.
+  const quietDays = (p) => (p.last_contact ? daysBetween(p.last_contact, t) : Infinity);
+  const attentionAll = people.filter((p) => (p.tier === 'A' || p.tier === 'B') && !(p.circles || []).includes('Mohawk Honda') && quietDays(p) >= 30)
+    .sort((a, b) => a.tier.localeCompare(b.tier) || quietDays(b) - quietDays(a) || a.name.localeCompare(b.name));
+  const stale = attentionAll;
   const bdays = upcomingBirthdays(people, 21);
 
   // ---- network mix: one bar per dimension ----
@@ -47,9 +54,9 @@ export async function renderDashboard() {
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
   const relOrder = [...RELS.filter((r) => relN[r]), ...Object.keys(relN).filter((r) => r && !RELS.includes(r)).sort((a, b) => relN[b] - relN[a])];
   // family roles (Parent, Uncle, ...) roll up into one Family segment; <5 -> Other applies to the rest
-  const famRoles = FAMILY_VALUES.filter((r) => relN[r]);
+  const famRoles = famOrder(Object.keys(relN).filter(isFamilyRel), (r) => relN[r]);
   const famN = famRoles.reduce((a, r) => a + relN[r], 0);
-  const nonFam = relOrder.filter((r) => r && !FAMILY_VALUES.includes(r));
+  const nonFam = relOrder.filter((r) => r && !isFamilyRel(r));
   const bigR = nonFam.filter((r) => relN[r] >= 5);
   const smallR = nonFam.filter((r) => relN[r] < 5);
   const otherN = smallR.reduce((a, r) => a + relN[r], 0);
@@ -99,7 +106,7 @@ export async function renderDashboard() {
       <span class="stat"><span class="k">People</span><span class="v">${people.length}</span></span>
       <span class="stat"><span class="k">Added \u00b7 ${t.slice(0, 7)}</span><span class="v">${newMonth}</span></span>
       <span class="stat"><span class="k">Day streak</span><span class="v">${streak ? streak : '\u2013'}</span></span>
-      <span class="stat ${stale.length ? 'red' : ''}"><span class="k">Going stale</span><span class="v">${stale.length}</span></span>
+      <span class="stat ${attentionAll.length ? 'amber' : ''}"><span class="k">Needs attention</span><span class="v">${attentionAll.length}</span></span>
     </div>
     <div class="card" style="margin-top:12px;padding:14px">
       ${sec('Network mix')}
@@ -109,8 +116,9 @@ export async function renderDashboard() {
     </div>
     ${insightsHtml}
     <div class="dash" style="margin-top:12px"><div class="dash-main">
-      ${sec('Going stale', stale.length, '', stale.length ? 'red' : '')}
-      ${stale.length ? `<ul class="list card">${stale.map((p) => personRow(p, st('gray', ago(p.last_contact)), actDot(actMap[p.id]))).join('')}</ul>` : '<div class="card empty">Nobody you\u2019ve logged a conversation with has gone 60+ days quiet.</div>'}
+      ${sec('Needs attention', attentionAll.length, '', attentionAll.length ? 'amber' : '')}
+      ${stale.length ? `<ul class="list card">${stale.map((p, i) => { const row = personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id])); return i < 8 ? row : row.replace('<li>', '<li hidden data-attn-more>'); }).join('')}</ul>
+        <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.${attentionAll.length > 8 ? ` <a href="#" id="attnAll">Show all ${attentionAll.length}</a>` : ''}</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
       ${sec('Events coming up', upcoming.length)}
       ${upcoming.length ? evList(upcoming, '', true) : '<div class="card empty">Nothing on the calendar.</div>'}
       <div id="evSlot"></div>
@@ -135,6 +143,8 @@ export async function renderDashboard() {
     else ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
     location.hash = '#/people';
   }));
+  const attnAll = document.getElementById('attnAll');
+  if (attnAll) attnAll.onclick = (e) => { e.preventDefault(); $view.querySelectorAll('[data-attn-more]').forEach((li) => (li.hidden = false)); attnAll.remove(); };
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
 
@@ -532,14 +542,14 @@ export async function renderPeople(reuse) {
   const relCustomN = {};
   people.forEach((p) => { const r = relOf(p); if (r && !RELS.includes(r)) relCustomN[r] = (relCustomN[r] || 0) + 1; });
   const relRows = [
-    ...RELS.filter((r) => relN(r) && !FAMILY_VALUES.includes(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
-    ...Object.entries(relCustomN).filter(([r]) => !FAMILY_VALUES.includes(r)).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
+    ...RELS.filter((r) => relN(r) && !isFamilyRel(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
+    ...Object.entries(relCustomN).filter(([r]) => !isFamilyRel(r)).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
   ];
   const relBig = relRows.filter((r) => r.n >= 5);
   const relSmall = relRows.filter((r) => r.n < 5);
   const relOtherN = relSmall.reduce((a, r) => a + r.n, 0);
   // family group: one parent row + a sub-row per role present (Parent, Uncle, ...)
-  const famRolesHere = FAMILY_VALUES.filter((r) => relN(r));
+  const famRolesHere = famOrder([...new Set(people.map(relOf).filter(isFamilyRel))], relN);
   const famNHere = famRolesHere.reduce((a, r) => a + relN(r), 0);
   const famAllOn = () => famRolesHere.length > 0 && famRolesHere.every((r) => F.rels.has(r));
   const circleRank = {};
@@ -731,11 +741,12 @@ export async function renderSettings() {
     <div class="card" style="padding:6px 14px">${[...TIER_KEYS, ''].map((t) => colorRow('tier', t, t ? `Tier ${t}` : 'Unassigned', effTier(t))).join('')}</div>
     ${sec('Circles')}
     <div class="card" style="padding:6px 14px">${circles.map((c) => colorRow('circle', c, `${c} · ${circleCounts[c]}`, effCircle(c))).join('') || '<div class="empty">No circles yet.</div>'}</div>
-    <p class="note">Colors save on this device and apply everywhere right away.</p>
+    <p class="note">Colors and theme save to your account and show up on every device you sign in on.</p>
     <div class="linkrow"><a href="#" id="colorReset">Reset all colors</a></div>`;
   $view.querySelectorAll('[data-cg]').forEach((inp) => (inp.oninput = () => {
     setColorOverride(inp.dataset.cg, inp.dataset.ck, inp.value);
+    pushSettings();
     inp.closest('.colorrow').querySelector('.hex').textContent = inp.value;
   }));
-  document.getElementById('colorReset').onclick = (e) => { e.preventDefault(); resetColorOverrides(); renderSettings(); };
+  document.getElementById('colorReset').onclick = (e) => { e.preventDefault(); resetColorOverrides(); pushSettings(); renderSettings(); };
 }
