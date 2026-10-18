@@ -413,3 +413,6 @@ li.fu .main{padding-right:86px}
   .nav button.mnav:hover { color: var(--text); }
   .moresheet { left: 220px; right: auto; width: 300px; bottom: 24px; }
 }
+/* family sub-rows sit indented under the Family parent row */
+.chk.sub { padding-left: 26px; }
+.chk.sub .t { font-weight: 400; }

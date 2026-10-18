@@ -16,10 +16,12 @@ export const cssVarHex = (name, fb = '#888888') =>
   (typeof getComputedStyle !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue(name).trim() : '') || fb;
 
 // ---------- relationships ----------
+import { FAMILY_ROLES } from './config.js';
 export const REL_KEYS = ['Professional', 'Friend', 'Family', 'Family Friend', 'Customer', 'Prospect', 'Business'];
 const REL_VARS = { Professional: '--rel-professional', Friend: '--rel-friend', Family: '--rel-family', 'Family Friend': '--rel-familyfriend', Customer: '--rel-customer', Prospect: '--rel-prospect', Business: '--rel-business' };
-export const relColor = (k) => read().rel?.[k] || (REL_VARS[k] ? `var(${REL_VARS[k]})` : 'var(--rel-other)');
-export const relDefaultHex = (k) => cssVarHex(REL_VARS[k] || '--rel-other', '#8d8578');
+const relVar = (k) => REL_VARS[k] || (FAMILY_ROLES.includes(k) ? '--rel-family' : '--rel-other');
+export const relColor = (k) => read().rel?.[k] || `var(${relVar(k)})`;
+export const relDefaultHex = (k) => cssVarHex(relVar(k), '#8d8578');
 
 // ---------- tiers ----------
 export const TIER_KEYS = ['A', 'B', 'C', 'D'];

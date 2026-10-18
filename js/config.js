@@ -7,6 +7,10 @@ export const SUPABASE_KEY = 'sb_publishable_ifWhRQP70qDA4tHBy6_AKg_3phy0aFo'; //
 export const TIERS = ['A', 'B', 'C', 'D'];
 export const KINDS = ['conversation', 'call', 'message', 'meeting'];
 export const RELS = ['Professional', 'Friend', 'Family', 'Family Friend', 'Customer', 'Prospect', 'Business'];
+// specific family roles roll up into one "Family" group on the dashboard + People filter
+export const FAMILY_ROLES = ['Parent', 'Sibling', 'Grandparent', 'Uncle', 'Aunt', 'Cousin', 'Nephew', 'Niece', 'Sister-in-law', 'Brother-in-law'];
+export const FAMILY_VALUES = ['Family', ...FAMILY_ROLES];
+export const FAMILY_PLURAL = { Family: 'Family', Parent: 'Parents', Sibling: 'Siblings', Grandparent: 'Grandparents', Uncle: 'Uncles', Aunt: 'Aunts', Cousin: 'Cousins', Nephew: 'Nephews', Niece: 'Nieces', 'Sister-in-law': 'Sisters-in-law', 'Brother-in-law': 'Brothers-in-law' };
 // action categories for follow-ups + tasks (the Actions tab)
 export const ACTION_CATEGORIES = ['sales', 'networking', 'business', 'social media', 'family', 'birthday', 'dining', 'travel', 'finance', 'health', 'general'];
 export const ACTION_IMPORTANCE = ['urgent', 'high', 'medium', 'neutral'];

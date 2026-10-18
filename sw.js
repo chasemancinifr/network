@@ -1,5 +1,5 @@
 // App-shell cache. Data (Supabase) is never cached: always live.
-const CACHE = 'network-v38';
+const CACHE = 'network-v39';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'supabase.js', 'marked.js', 'purify.js',
   'js/config.js', 'js/utils.js', 'js/ui.js', 'js/db.js', 'js/followups.js', 'js/tasks.js', 'js/events.js', 'js/pages.js', 'js/person.js', 'js/auth.js', 'js/router.js', 'js/new.js'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL))); self.skipWaiting(); });

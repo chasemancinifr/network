@@ -3,7 +3,7 @@
 import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
-import { state, TIERS, KINDS, RELS, ACTION_CATEGORIES } from './config.js';
+import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES } from './config.js';
 import { fuItem, fuList, bindFollowups, nextTouch, ntouch } from './followups.js';
 import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
@@ -46,13 +46,19 @@ export async function renderDashboard() {
   const relN = {};
   people.forEach((p) => { const k = relKey(p); relN[k] = (relN[k] || 0) + 1; });
   const relOrder = [...RELS.filter((r) => relN[r]), ...Object.keys(relN).filter((r) => r && !RELS.includes(r)).sort((a, b) => relN[b] - relN[a])];
-  // graph stays clean: categories with 5+ people get a segment, the rest fold into Other
-  const bigR = relOrder.filter((r) => r && relN[r] >= 5).sort((a, b) => relN[b] - relN[a]);
-  const smallR = relOrder.filter((r) => r && relN[r] < 5);
+  // family roles (Parent, Uncle, ...) roll up into one Family segment; <5 -> Other applies to the rest
+  const famRoles = FAMILY_VALUES.filter((r) => relN[r]);
+  const famN = famRoles.reduce((a, r) => a + relN[r], 0);
+  const nonFam = relOrder.filter((r) => r && !FAMILY_VALUES.includes(r));
+  const bigR = nonFam.filter((r) => relN[r] >= 5);
+  const smallR = nonFam.filter((r) => relN[r] < 5);
   const otherN = smallR.reduce((a, r) => a + relN[r], 0);
-  if (relN['']) bigR.push('');
-  const relEntries = [...bigR.map((r) => ({ k: r || '__none', l: relLabel(r), n: relN[r], c: relColor(r) })),
-    ...(otherN ? [{ k: '__other__', l: 'Other', n: otherN, c: relColor('__other__') }] : [])];
+  const segEntries = bigR.map((r) => ({ k: r, l: relLabel(r), n: relN[r], c: relColor(r) }));
+  if (famN) segEntries.push({ k: '__family__', l: 'Family', n: famN, c: relColor('Family') });
+  segEntries.sort((a, b) => b.n - a.n);
+  const relEntries = [...segEntries,
+    ...(otherN ? [{ k: '__other__', l: 'Other', n: otherN, c: relColor('__other__') }] : []),
+    ...(relN[''] ? [{ k: '__none', l: 'Uncategorized', n: relN[''], c: 'var(--rel-none)' }] : [])];
   const tierEntries = [...TIERS.map((tr) => ({ k: tr, l: `Tier ${tr}`, n: people.filter((p) => p.tier === tr).length, c: tierColor(tr) })),
     { k: '__none', l: 'Unassigned', n: people.filter((p) => !p.tier).length, c: tierColor('') }];
   const circleCounts = {};
@@ -124,7 +130,8 @@ export async function renderDashboard() {
   $view.querySelectorAll('.mixlink').forEach((b) => (b.onclick = () => {
     const F = state.peopleFilter;
     F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear();
-    if (b.dataset.g === 'rels' && b.dataset.k === '__other__') smallR.forEach((k) => F.rels.add(k));
+    if (b.dataset.g === 'rels' && b.dataset.k === '__family__') famRoles.forEach((k) => F.rels.add(k));
+    else if (b.dataset.g === 'rels' && b.dataset.k === '__other__') smallR.forEach((k) => F.rels.add(k));
     else ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
     location.hash = '#/people';
   }));
@@ -522,12 +529,16 @@ export async function renderPeople() {
   const relCustomN = {};
   people.forEach((p) => { const r = relOf(p); if (r && !RELS.includes(r)) relCustomN[r] = (relCustomN[r] || 0) + 1; });
   const relRows = [
-    ...RELS.filter((r) => relN(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
-    ...Object.entries(relCustomN).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
+    ...RELS.filter((r) => relN(r) && !FAMILY_VALUES.includes(r)).map((r) => ({ k: r, label: relLabel(r), n: relN(r), c: relColor(r) })),
+    ...Object.entries(relCustomN).filter(([r]) => !FAMILY_VALUES.includes(r)).sort((a, b) => b[1] - a[1]).map(([r, n]) => ({ k: r, label: r, n, c: relColor(r) })),
   ];
   const relBig = relRows.filter((r) => r.n >= 5);
   const relSmall = relRows.filter((r) => r.n < 5);
   const relOtherN = relSmall.reduce((a, r) => a + r.n, 0);
+  // family group: one parent row + a sub-row per role present (Parent, Uncle, ...)
+  const famRolesHere = FAMILY_VALUES.filter((r) => relN(r));
+  const famNHere = famRolesHere.reduce((a, r) => a + relN(r), 0);
+  const famAllOn = () => famRolesHere.length > 0 && famRolesHere.every((r) => F.rels.has(r));
   const circleRank = {};
   [...circles].sort((a, b) => circleN(b) - circleN(a)).forEach((c, i) => { circleRank[c] = i; });
   const recent = people.filter((p) => p.created_at).sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0)).slice(0, 6);
@@ -537,12 +548,14 @@ export async function renderPeople() {
       <div class="fgroup${groupIsOpen(g) ? '' : ' closed'}" data-group="${g}"><div class="flabel"><button class="fgtoggle" data-gtoggle="${g}" aria-expanded="${groupIsOpen(g)}"><span>${label}</span>${chevSvg}</button>${F[clearKey].size ? `<button class="mini" data-clear="${clearKey}">Clear</button>` : ''}</div>
         <div class="checklist">${body}</div></div>`;
   const dot = (c) => `<i class="dotk" style="background:${c}"></i>`;
+  const famRowHtml = () => !famNHere ? '' : `<button class="chk ${famAllOn() ? 'on' : ''}" data-rel="__family" aria-pressed="${famAllOn()}">${chk(0, 'Family', famNHere, dot(relColor('Family')))}</button>` +
+    famRolesHere.map((r) => `<button class="chk sub ${F.rels.has(r) ? 'on' : ''}" data-rel="${esc(r)}" aria-pressed="${F.rels.has(r)}">${chk(0, FAMILY_PLURAL[r] || r, relN(r), dot(relColor(r)))}</button>`).join('');
   $view.innerHTML = `
     <div class="people-wrap"><div class="people-side">
       <input class="search" id="q" type="search" placeholder="Search name, role, alias…" value="${esc(F.q)}" autocomplete="off">
       ${fgroup('tiers', 'Tiers', 'tiers', `${TIERS.map((t) => `<button class="chk ${F.tiers.has(t) ? 'on' : ''}" data-tier="${t}" aria-pressed="${F.tiers.has(t)}">${chk(0, `Tier ${t}`, tierN(t), dot(tierColor(t)))}</button>`).join('')}
         <button class="chk ${F.tiers.has('__none') ? 'on' : ''}" data-tier="__none" aria-pressed="${F.tiers.has('__none')}">${chk(0, 'Unassigned', noneN, dot(tierColor('')))}</button>`)}
-      ${fgroup('rels', 'Relationship', 'rels', `${relBig.map((r) => `<button class="chk ${F.rels.has(r.k) ? 'on' : ''}" data-rel="${esc(r.k)}" aria-pressed="${F.rels.has(r.k)}">${chk(0, r.label, r.n, dot(r.c))}</button>`).join('')}
+      ${fgroup('rels', 'Relationship', 'rels', `${famRowHtml()}${relBig.map((r) => `<button class="chk ${F.rels.has(r.k) ? 'on' : ''}" data-rel="${esc(r.k)}" aria-pressed="${F.rels.has(r.k)}">${chk(0, r.label, r.n, dot(r.c))}</button>`).join('')}
         ${relOtherN ? `<button class="chk ${relSmall.length && relSmall.every((r) => F.rels.has(r.k)) ? 'on' : ''}" data-rel="__other" aria-pressed="${relSmall.length && relSmall.every((r) => F.rels.has(r.k))}">${chk(0, 'Other', relOtherN, dot('var(--rel-other)'))}</button>` : ''}
         <button class="chk ${F.rels.has('__none') ? 'on' : ''}" data-rel="__none" aria-pressed="${F.rels.has('__none')}">${chk(0, 'Uncategorized', noRelN, dot('var(--rel-none)'))}</button>`)}
       ${fgroup('circles', 'Circles', 'circles', `${circles.map((c) => `<button class="chk ${F.circles.has(c) ? 'on' : ''}" data-circle="${esc(c)}" aria-pressed="${F.circles.has(c)}">${chk(0, c, circleN(c), dot(circleColor(c, circleRank[c])))}</button>`).join('')}
@@ -572,7 +585,11 @@ export async function renderPeople() {
   $view.querySelectorAll('[data-tier]').forEach((b) => (b.onclick = () => toggle(F.tiers, b.dataset.tier, b)));
   $view.querySelectorAll('[data-circle]').forEach((b) => (b.onclick = () => toggle(F.circles, b.dataset.circle, b)));
   $view.querySelectorAll('[data-rel]').forEach((b) => (b.onclick = () => {
-    if (b.dataset.rel === '__other') {
+    if (b.dataset.rel === '__family') {
+      const allOn = famAllOn();
+      famRolesHere.forEach((r) => { if (allOn) F.rels.delete(r); else F.rels.add(r); });
+      renderPeople();
+    } else if (b.dataset.rel === '__other') {
       const allOn = relSmall.length > 0 && relSmall.every((r) => F.rels.has(r.k));
       relSmall.forEach((r) => { if (allOn) F.rels.delete(r.k); else F.rels.add(r.k); });
       renderPeople();
