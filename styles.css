@@ -112,9 +112,13 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .mixlink:hover { color: var(--text); }
 .mixlink:hover b { text-decoration: underline; }
 /* dashboard insights */
-.insight { display: flex; gap: 10px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
-.insight:last-child { border-bottom: 0; }
+button.insight { display: flex; gap: 10px; align-items: center; width: 100%; padding: 9px 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--text); font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
 .insight .dotk { flex: none; transform: translateY(1px); }
+.insight span { flex: 1; }
+.insight .chev { flex: none; color: var(--muted); transition: transform .15s; }
+.insight.open .chev { transform: rotate(180deg); }
+.insight-detail { padding: 2px 0 10px 22px; border-bottom: 1px solid var(--line); }
+.card > .insight:last-child, .card > .insight-detail:last-child { border-bottom: 0; }
 /* settings: color rows */
 .colorrow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
 .colorrow:last-child { border-bottom: 0; }

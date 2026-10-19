@@ -83,19 +83,29 @@ export async function renderDashboard() {
   const openN = fus.length + tasks.length;
   const actEntries = Object.values(actMap).sort((a, b) => b.n - a.n);
   const top3Acts = actEntries.slice(0, 3).reduce((a, e) => a + e.n, 0);
-  const stale90 = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 90).length;
   const insights = [];
   if (intsPrev7 > 0) {
     const pct = Math.round((ints7 - intsPrev7) / intsPrev7 * 100);
-    insights.push({ c: pct >= 0 ? 'var(--rel-friend)' : 'var(--red)', t: `Conversations ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct)}% vs last week (${ints7} vs ${intsPrev7}).` });
-  } else if (ints7 > 0) insights.push({ c: 'var(--rel-friend)', t: `${ints7} conversations logged this week — first active week in the window.` });
-  if (overdueN > 0) insights.push({ c: 'var(--red)', t: `${overdueN} of your ${openN} open actions are overdue.` });
-  else if (openN > 0) insights.push({ c: 'var(--rel-friend)', t: `All ${openN} open actions are on schedule — nothing overdue.` });
-  if (openN > 0 && actEntries.length >= 3) insights.push({ c: 'var(--amber)', t: `${top3Acts} of your ${openN} open actions belong to just ${Math.min(3, actEntries.length)} people.` });
-  if (circleEntries.length) insights.push({ c: circleEntries[0].c, t: `${circleEntries[0].l} is your biggest circle — ${circleEntries[0].n} of ${people.length} people.` });
-  if (stale90 > 0) insights.push({ c: 'var(--amber)', t: `${stale90} ${stale90 === 1 ? 'person' : 'people'} you haven't contacted in 90+ days.` });
-  const insightsHtml = insights.length ? `<div class="card" style="margin-top:12px;padding:6px 14px">${insights.map((i) =>
-    `<div class="insight"><i class="dotk" style="background:${i.c}"></i><span>${esc(i.t)}</span></div>`).join('')}</div>` : '';
+    insights.push({ c: pct >= 0 ? 'var(--rel-friend)' : 'var(--red)', t: `Conversations ${pct >= 0 ? 'up' : 'down'} ${Math.abs(pct)}% vs last week (${ints7} vs ${intsPrev7}).`, go: '#/interactions' });
+  } else if (ints7 > 0) insights.push({ c: 'var(--rel-friend)', t: `${ints7} conversations logged this week — first active week in the window.`, go: '#/interactions' });
+  if (overdueN > 0) insights.push({ c: 'var(--red)', t: `${overdueN} of your ${openN} open actions are overdue.`, go: '#/overdue' });
+  else if (openN > 0) insights.push({ c: 'var(--rel-friend)', t: `All ${openN} open actions are on schedule — nothing overdue.`, go: '#/actions' });
+  if (openN > 0 && actEntries.length >= 3) insights.push({ c: 'var(--amber)', t: `${top3Acts} of your ${openN} open actions belong to just ${Math.min(3, actEntries.length)} people.`, expand: 'conc' });
+  if (circleEntries.length) insights.push({
+    c: circleEntries[0].c, t: `${circleEntries[0].l} is your biggest circle — ${circleEntries[0].n} of ${people.length} people.`,
+    go: () => { const F = state.peopleFilter; F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear(); F.circles.add(circleEntries[0].k); location.hash = '#/people'; },
+  });
+  const stale90List = people.filter((p) => !p.cadence_days && p.last_contact && daysBetween(p.last_contact, t) > 90)
+    .sort((a, b) => daysBetween(b.last_contact, t) - daysBetween(a.last_contact, t));
+  if (stale90List.length > 0) insights.push({ c: 'var(--amber)', t: `${stale90List.length} ${stale90List.length === 1 ? 'person' : 'people'} you haven't contacted in 90+ days.`, expand: 'stale' });
+  const concDetail = () => {
+    const byId = {}; people.forEach((p) => { byId[p.id] = p; });
+    const top = Object.entries(actMap).map(([pid, e]) => ({ pid, n: e.n })).sort((a, b) => b.n - a.n).slice(0, 3);
+    return `<ul class="list">${top.map((e) => { const p = byId[e.pid]; return p ? `<li class="fu"><div class="main"><span class="t"><a href="#/p/${p.id}">${esc(p.name)}</a></span><span class="meta">${e.n} open action${e.n === 1 ? '' : 's'}</span></div></li>` : ''; }).join('')}</ul>`;
+  };
+  const staleDetail = () => `<ul class="list">${stale90List.map((p) => personRow(p, st('gray', `${ago(p.last_contact)} ago`), actDot(actMap[p.id]))).join('')}</ul>`;
+  const insightsHtml = insights.length ? `<div class="card" style="margin-top:12px;padding:6px 14px">${insights.map((ins, i) => `
+    <button class="insight" data-ins="${i}" aria-expanded="false"><i class="dotk" style="background:${ins.c}"></i><span>${esc(ins.t)}</span>${ins.expand ? chevSvg : ''}</button>${ins.expand ? `<div class="insight-detail" id="insDet${i}" hidden></div>` : ''}`).join('')}</div>` : '';
   const reminders = [
     ...fus.map((f) => ({ due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
     ...tasks.map((x) => ({ due: x.due_date, created: x.created_at, html: withBadge(taskItem(x), 'task', 'task') })),
@@ -135,6 +145,19 @@ export async function renderDashboard() {
   bindTasks(renderDashboard);
   bindEvents(renderDashboard, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderDashboard));
   // network mix drill-in: tap a legend item to open People filtered to it
+  $view.querySelectorAll('[data-ins]').forEach((b) => (b.onclick = () => {
+    const ins = insights[+b.dataset.ins];
+    if (typeof ins.go === 'function') { ins.go(); return; }
+    if (typeof ins.go === 'string') { location.hash = ins.go; return; }
+    if (ins.expand) {
+      const det = document.getElementById('insDet' + b.dataset.ins);
+      const opening = det.hidden;
+      det.hidden = !opening;
+      b.setAttribute('aria-expanded', String(opening));
+      b.classList.toggle('open', opening);
+      if (opening && !det.dataset.filled) { det.dataset.filled = '1'; det.innerHTML = ins.expand === 'conc' ? concDetail() : staleDetail(); }
+    }
+  }));
   $view.querySelectorAll('.mixlink').forEach((b) => (b.onclick = () => {
     const F = state.peopleFilter;
     F.q = ''; F.tiers.clear(); F.circles.clear(); F.rels.clear();
