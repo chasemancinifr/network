@@ -7,6 +7,7 @@ import { state, TIERS, KINDS, RELS, FAMILY_ROLES } from './config.js';
 import { fuItem, bindFollowups } from './followups.js';
 import { taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
+import { editInteraction } from './pages.js';
 
 // ---------- person (panel) ----------
 export async function renderPerson(id) {
@@ -63,7 +64,7 @@ export async function renderPerson(id) {
 
     ${sec('History', ints.length)}
     <div class="card">${ints.length ? `<ul class="list">${ints.map((i) => `<li class="fu"><div class="main"><span class="t">${esc(i.summary)}</span>
-      <span class="meta">${monoDate(i.happened_at)} · ${esc(i.kind)}${i.duration_min ? ` · ${i.duration_min} min` : ''}</span></div></li>`).join('')}</ul>` : '<div class="empty">No interactions logged yet.</div>'}</div>
+      <span class="meta">${monoDate(i.happened_at)} · ${esc(i.kind)}${i.duration_min ? ` · ${i.duration_min} min` : ''}</span></div><button class="mini" data-int-edit="${i.id}">Edit</button></li>`).join('')}</ul>` : '<div class="empty">No interactions logged yet.</div>'}</div>
 
     ${sec('Notes')}
     <div class="card">${p.notes ? `<div class="notes">${md(p.notes)}</div>` : '<div class="empty">No notes.</div>'}
@@ -71,6 +72,7 @@ export async function renderPerson(id) {
 
   bindFollowups(() => renderPerson(id), root);
   bindTasks(() => renderPerson(id), root);
+  root.querySelectorAll('[data-int-edit]').forEach((b) => (b.onclick = () => editInteraction(b.dataset.intEdit, () => renderPerson(id))));
   const slot = document.getElementById('formSlot');
   bindEvents(() => renderPerson(id), root, (eid) => editEvent(eid, slot, () => renderPerson(id)));
   document.getElementById('logBtn').onclick = () => {

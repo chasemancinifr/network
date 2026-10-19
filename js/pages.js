@@ -400,7 +400,7 @@ async function renderRecentLegacy() {
 }
 
 // ---------- interactions ----------
-async function editInteraction(id) {
+export async function editInteraction(id, onDone = () => renderInteractions()) {
   const it = await q(sb.from('interactions').select('id,kind,happened_at,summary,duration_min,person_id').eq('id', id).single());
   if (!it) return;
   const people = await loadPeople();
@@ -428,7 +428,7 @@ async function editInteraction(id) {
       happened_at: document.getElementById('ie_date').value || null, summary: document.getElementById('ie_summary').value.trim(),
       duration_min: Number.isFinite(dm) ? dm : null,
     };
-    try { await q(sb.from('interactions').update(row).eq('id', id)); toast('Saved ✓'); closePanel(); renderInteractions(); }
+    try { await q(sb.from('interactions').update(row).eq('id', id)); toast('Saved ✓'); closePanel(); onDone(); }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('ie_summary').focus();
@@ -735,7 +735,7 @@ export async function renderCalendar() {
       ${taskItems.length ? `<div style="margin-top:${(pItems.length || evItems.length || fuItems.length) ? 8 : 0}px">${taskList(taskItems, '')}</div>` : ''}
       ${intItems.length ? `<div style="margin-top:12px"><div class="flabel"><span>Past interactions</span></div><ul class="list card">${intItems.map((i) => {
         const who = i.person ? `<a href="#/p/${i.person.id}">${esc(i.person.name)}</a>` : '<span class="meta">No person linked</span>';
-        return `<li class="fu past"><div class="main"><span class="t">${who}</span><span class="meta">${st('gray', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div></li>`;
+        return `<li class="fu past"><div class="main"><span class="t">${who}</span><span class="meta">${st('gray', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div><button class="mini" data-int-edit="${i.id}">Edit</button></li>`;
       }).join('')}</ul></div>` : ''}
       ${sec('Upcoming events', upcomingEvs.length, '', upcomingEvs.length ? 'amber' : '')}
       ${monthGroups.length ? monthGroups.map((g) => `<div class="flabel" style="margin-top:10px"><span>${esc(g.label)}</span></div>${evList(g.evs, '', true)}`).join('') : '<div class="card empty">No upcoming events.</div>'}
@@ -747,6 +747,7 @@ export async function renderCalendar() {
     document.getElementById('calAddEv').onclick = () => openEventForm(document.getElementById('evSlot'), { date: C.sel, people, onDone: renderCalendar });
     bindFollowups(renderCalendar);
     bindTasks(renderCalendar);
+    $view.querySelectorAll('[data-int-edit]').forEach((b) => (b.onclick = () => editInteraction(b.dataset.intEdit, renderCalendar)));
     bindEvents(renderCalendar, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderCalendar));
   };
   draw();
