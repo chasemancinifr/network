@@ -400,6 +400,40 @@ async function renderRecentLegacy() {
 }
 
 // ---------- interactions ----------
+async function editInteraction(id) {
+  const it = await q(sb.from('interactions').select('id,kind,happened_at,summary,duration_min,person_id').eq('id', id).single());
+  if (!it) return;
+  const people = await loadPeople();
+  openPanel();
+  const who = people.find((p) => p.id === it.person_id);
+  panelHead({ kicker: who ? who.name : 'Interaction', title: 'Edit interaction' });
+  const root = $pBody;
+  root.innerHTML = `<form class="card form" id="ief">
+    <div class="grid2">
+      <div><label class="lbl" for="ie_person">Person</label><select class="field" id="ie_person"><option value="">No person</option>${people.map((p) => `<option value="${p.id}"${p.id === it.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div><label class="lbl" for="ie_kind">Type</label><select class="field" id="ie_kind">${KINDS.map((k) => `<option${k === it.kind ? ' selected' : ''}>${k}</option>`).join('')}</select></div>
+    </div>
+    <div class="grid2">
+      <div><label class="lbl" for="ie_date">Date</label><input class="field" type="date" id="ie_date" value="${esc((it.happened_at || '').slice(0, 10))}" max="${today()}"></div>
+      <div><label class="lbl" for="ie_min">Minutes (optional)</label><input class="field" id="ie_min" inputmode="numeric" value="${it.duration_min ?? ''}"></div>
+    </div>
+    <label class="lbl" for="ie_summary">What happened</label><textarea class="field" id="ie_summary" required style="min-height:90px">${esc(it.summary || '')}</textarea>
+    <div class="actions" style="margin-top:14px"><button class="btn primary">Save</button><button type="button" class="btn" id="ie_cancel">Cancel</button></div></form>`;
+  document.getElementById('ie_cancel').onclick = () => closePanel();
+  document.getElementById('ief').onsubmit = async (e) => {
+    e.preventDefault(); e.submitter && (e.submitter.disabled = true);
+    const dm = parseInt(document.getElementById('ie_min').value, 10);
+    const row = {
+      person_id: document.getElementById('ie_person').value || null, kind: document.getElementById('ie_kind').value,
+      happened_at: document.getElementById('ie_date').value || null, summary: document.getElementById('ie_summary').value.trim(),
+      duration_min: Number.isFinite(dm) ? dm : null,
+    };
+    try { await q(sb.from('interactions').update(row).eq('id', id)); toast('Saved ✓'); closePanel(); renderInteractions(); }
+    catch { e.submitter && (e.submitter.disabled = false); }
+  };
+  document.getElementById('ie_summary').focus();
+}
+
 export async function renderInteractions() {
   setHead({ kicker: 'Conversations', title: 'Interactions', tab: 'interactions', add: true });
   const [ints, people] = await Promise.all([
@@ -471,9 +505,10 @@ export async function renderInteractions() {
       <div class="daygroup"><div class="daydiv">${!g.d ? 'Undated' : g.d === t ? 'Today' : g.d === addDays(t, -1) ? 'Yesterday' : monoDate(g.d)}</div>
       <div class="card"><ul class="list">${g.items.map((i) => {
         const who = i.person ? `<a href="#/p/${i.person.id}">${esc(i.person.name)}</a>` : '<span class="meta">No person linked</span>';
-        return `<li class="fu"><div class="main"><span class="t">${who}</span><span class="meta">${st('amber', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div></li>`;
+        return `<li class="fu"><div class="main"><span class="t">${who}</span><span class="meta">${st('amber', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div><button class="mini" data-int-edit="${i.id}">Edit</button></li>`;
       }).join('')}</ul></div></div>`).join('')}</div>`
       : '<div class="card empty">No interactions match.</div>';
+    document.getElementById('intList').querySelectorAll('[data-int-edit]').forEach((b) => (b.onclick = () => editInteraction(b.dataset.intEdit)));
   };
   const qi = document.getElementById('intQ');
   qi.oninput = () => { state.intQ = qi.value; draw(); };
