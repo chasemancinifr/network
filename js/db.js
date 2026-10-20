@@ -2,7 +2,7 @@
 
 import { createClient } from '../supabase.js';
 import { SUPABASE_URL, SUPABASE_KEY, state } from './config.js';
-import { toast, impRank } from './ui.js';
+import { toast, impRank, REPEAT_OPTIONS } from './ui.js';
 import { addDays, addMonths } from './utils.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
@@ -52,6 +52,52 @@ export const shiftSeriesDate = (rule, d, steps) =>
 // rows of a series in a delete/edit scope: 'one' | 'following' | 'all'
 export const scopeRows = (siblings, idx, scope) =>
   siblings.filter((s) => scope === 'all' ? true : scope === 'following' ? s.series_index >= idx : s.series_index === idx);
+// Regenerate rows after the repeat rule changed in an edit form.
+// `row` = the edited fields; `oldRule` = the row's current series_rule (null
+// for a standalone item); `siblings` = current series members ([] when
+// standalone); `scope` = the series scope picker value ('one' when standalone
+// or the picker chose Only-this). Returns the toast message. Caller checks
+// dates before calling (tasks: repeating needs a due date).
+export async function applyRepeatChange({ table, row, newRule, oldRule, siblings, selfId, selfIndex, scope }) {
+  const dateKey = table === 'events' ? 'event_date' : 'due_date';
+  const repeatN = (k) => (REPEAT_OPTIONS.find((o) => o.k === k) || { n: 1 }).n;
+  const repeatLabel = (k) => (REPEAT_OPTIONS.find((o) => o.k === k) || { label: 'once' }).label;
+  const seriesCols = state.hasSeries ? {} : null; // null => no series columns in DB
+  const mkSeries = (sid) => Array.from({ length: repeatN(newRule) }, (_, i) => ({
+    ...row,
+    [dateKey]: shiftSeriesDate(newRule, row[dateKey], i),
+    ...(seriesCols ? { series_id: sid, series_rule: newRule, series_index: i } : {}),
+  }));
+  const mkStandalone = () => ({ ...row, ...(seriesCols ? { series_id: null, series_rule: null, series_index: null } : {}) });
+  const newSid = () => (state.hasSeries ? crypto.randomUUID() : null);
+
+  if (!oldRule) {
+    // Standalone item now repeats: tag the edited row as index 0, insert the rest.
+    const rows = mkSeries(newSid());
+    await q(sb.from(table).update(rows[0]).eq('id', selfId));
+    if (rows.length > 1) await q(sb.from(table).insert(rows.slice(1)));
+    return `Now repeats ${repeatLabel(newRule).toLowerCase()} ✓`;
+  }
+  if (scope === 'one') {
+    // Only this instance changes: detach it from the old series; the rest stay.
+    if (newRule === 'none') {
+      await q(sb.from(table).update(mkStandalone()).eq('id', selfId));
+      return 'Removed from series ✓';
+    }
+    const rows = mkSeries(newSid());
+    await q(sb.from(table).update(rows[0]).eq('id', selfId));
+    if (rows.length > 1) await q(sb.from(table).insert(rows.slice(1)));
+    return `This one now repeats ${repeatLabel(newRule).toLowerCase()} ✓`;
+  }
+  // 'following' / 'all': drop the affected rows and rebuild under the new rule.
+  for (const s of scopeRows(siblings, selfIndex, scope)) await q(sb.from(table).delete().eq('id', s.id));
+  if (newRule === 'none') {
+    await q(sb.from(table).insert(mkStandalone()));
+    return scope === 'all' ? 'Repeat removed ✓' : 'Future repeats removed ✓';
+  }
+  await q(sb.from(table).insert(mkSeries(newSid())));
+  return `Series now repeats ${repeatLabel(newRule).toLowerCase()} ✓`;
+}
 // per-person open-action counts with the highest importance level, for the
 // notification dot on person rows. Null importance counts as neutral.
 // Pure builder (pages that already loaded the rows reuse it); openActionMap

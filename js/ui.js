@@ -213,17 +213,19 @@ export function openSeriesDeletePanel({ kicker, title, note, onScope }) {
   document.getElementById('sdcancel').onclick = () => { closePanel(); onScope(null); };
 }
 export const seriesNote = (rule, idx, n) => `Repeating · ${rule[0].toUpperCase() + rule.slice(1)} · ${idx + 1} of ${n}`;
-// ---------- repeat selector (events + tasks, create only) ----------
+// ---------- repeat selector (events + tasks) ----------
 // Materializes N dated instances (weekly x12, monthly x12, yearly x10).
 // Each instance is a real row, editable/deletable on its own.
+// Shown on create AND on edit — changing the rule in the edit form regenerates
+// the affected rows (see applyRepeatChange in db.js).
 export const REPEAT_OPTIONS = [
   { k: 'none', label: 'No repeat', n: 1 },
   { k: 'weekly', label: 'Weekly', n: 12 },
   { k: 'monthly', label: 'Monthly', n: 12 },
   { k: 'yearly', label: 'Yearly', n: 10 },
 ];
-export function repeatField() {
-  let sel = 'none';
+export function repeatField(selected = 'none') {
+  let sel = REPEAT_OPTIONS.some((o) => o.k === selected) ? selected : 'none';
   return {
     html: `<label class="lbl">Repeat</label><div class="pills" data-repeatpills>${REPEAT_OPTIONS.map((o) => `<button type="button" class="pill${sel === o.k ? ' on' : ''}" data-r="${o.k}" title="${o.k === 'none' ? 'Just this once' : `${o.label} · creates ${o.n}`}">${o.label}</button>`).join('')}</div>`,
     bind(root) {

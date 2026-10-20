@@ -1,7 +1,7 @@
 // Tasks: general to-dos. Follow-ups stay person-centric nudges. A task may
 // link a person and may carry a due date — neither is required.
 
-import { sb, q, loadPeople, seriesSiblings, scopeRows, shiftSeriesDate } from './db.js';
+import { sb, q, loadPeople, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
 import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel } from './ui.js';
 import { esc, today } from './utils.js';
 import { state } from './config.js';
@@ -82,6 +82,7 @@ export async function editTask(taskId, rerender) {
   const people = await loadPeople();
   const cat = categoryField(t.category);
   const imp = importanceField(t.importance);
+  const rep = repeatField(t.series_rule || 'none');
   const siblings = t.series_id ? await seriesSiblings('tasks', t.series_id) : [];
   const isSeries = siblings.length > 1;
   const scp = isSeries ? seriesScopeField(seriesNote(t.series_rule, t.series_index, siblings.length)) : null;
@@ -97,6 +98,7 @@ export async function editTask(taskId, rerender) {
     ${cat.html}
     ${imp.html}
     ${scp ? scp.html : ''}
+    ${rep.html}
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
   document.getElementById('te_cancel').onclick = () => dismissPanel();
   document.getElementById('te_del').onclick = async (e) => {
@@ -116,7 +118,7 @@ export async function editTask(taskId, rerender) {
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
     b.disabled = true; await q(sb.from('tasks').delete().eq('id', taskId)); toast('Deleted'); closePanel(); rerender();
   };
-  cat.bind(root); imp.bind(root);
+  cat.bind(root); imp.bind(root); rep.bind(root);
   if (scp) scp.bind(root);
   document.getElementById('tef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
@@ -124,15 +126,24 @@ export async function editTask(taskId, rerender) {
       due_date: document.getElementById('te_due').value || null, person_id: document.getElementById('te_person').value || null };
     if (state.hasCategory) row.category = cat.get();
     if (state.hasImportance) row.importance = imp.get();
+    const r = rep.get();
+    if (r.k !== 'none' && !row.due_date) { toast('Pick a due date for a repeating task'); e.submitter && (e.submitter.disabled = false); return; }
     try {
-      if (!scp || scp.get() === 'one') {
-        await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓');
-      } else {
-        const targets = scopeRows(siblings, t.series_index, scp.get());
-        for (const s of targets) {
-          await q(sb.from('tasks').update({ ...row, due_date: row.due_date ? shiftSeriesDate(t.series_rule, row.due_date, s.series_index - t.series_index) : null }).eq('id', s.id));
+      const oldRule = t.series_rule || null;
+      if (r.k === (oldRule || 'none')) {
+        if (!scp || scp.get() === 'one') {
+          await q(sb.from('tasks').update(row).eq('id', taskId)); toast('Saved ✓');
+        } else {
+          const targets = scopeRows(siblings, t.series_index, scp.get());
+          for (const s of targets) {
+            await q(sb.from('tasks').update({ ...row, due_date: row.due_date ? shiftSeriesDate(t.series_rule, row.due_date, s.series_index - t.series_index) : null }).eq('id', s.id));
+          }
+          toast(`Updated ${targets.length} tasks ✓`);
         }
-        toast(`Updated ${targets.length} tasks ✓`);
+      } else {
+        // Frequency changed: regenerate the affected rows under the new rule.
+        const msg = await applyRepeatChange({ table: 'tasks', row, newRule: r.k, oldRule, siblings, selfId: taskId, selfIndex: t.series_index, scope: scp ? scp.get() : 'one' });
+        toast(msg);
       }
       closePanel(); rerender();
     }
