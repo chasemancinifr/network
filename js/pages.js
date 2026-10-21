@@ -255,7 +255,6 @@ export async function renderOverdue() {
 // ---------- actions: follow-ups + tasks merged, one list ----------
 const badge = (label, cls) => `<span class="typebadge ${cls}">${label}</span>`;
 const withBadge = (html, label, cls) => html
-  .replace(/<button class="btn small" data-park="[^"]*">Park<\/button>/, '')
   .replace('<div class="main">', `${badge(label, cls)}<div class="main">`);
 export async function renderActions() {
   setHead({ kicker: 'Follow-ups + tasks', title: 'Actions', tab: 'actions', add: true });

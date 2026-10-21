@@ -19,16 +19,12 @@ export function fuItem(f, sub = '') {
   const ctl = f.status === 'open'
     ? `<button class="check" data-done="${f.id}" aria-label="Mark done" title="Mark done"></button>`
     : `<button class="btn small" data-reopen="${f.id}">Reopen</button>`;
-  const park = f.status === 'open' ? `<button class="btn small" data-park="${f.id}">Park</button>` : '';
-  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${catBadge(f.category)}${impBadge(f.importance)}${who ? `<span>${who}</span>` : ''}</span>${sub}</div>${park}</li>`;
+  return `<li class="fu ${f.status}">${ctl}<div class="main"><button class="t tlink" data-fu-edit="${f.id}">${esc(f.title)}</button><span class="meta">${fuStatus(f)}${catBadge(f.category)}${impBadge(f.importance)}${who ? `<span>${who}</span>` : ''}</span>${sub}</div></li>`;
 }
 export function bindFollowups(rerender, root = $view) {
   root.querySelectorAll('[data-done]').forEach((b) => (b.onclick = async () => {
     b.disabled = true; await q(sb.from('follow_ups').update({ status: 'closed', completed_at: new Date().toISOString() }).eq('id', b.dataset.done));
     toast('Done ✓'); rerender();
-  }));
-  root.querySelectorAll('[data-park]').forEach((b) => (b.onclick = async () => {
-    b.disabled = true; await q(sb.from('follow_ups').update({ status: 'parked' }).eq('id', b.dataset.park)); toast('Parked'); rerender();
   }));
   root.querySelectorAll('[data-reopen]').forEach((b) => (b.onclick = async () => {
     b.disabled = true; await q(sb.from('follow_ups').update({ status: 'open', completed_at: null }).eq('id', b.dataset.reopen)); toast('Reopened'); rerender();
