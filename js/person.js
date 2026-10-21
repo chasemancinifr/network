@@ -1,6 +1,6 @@
 // Person panel: full record view + add/edit form.
 
-import { sb, q, loadPeople, personTasks, buildActionMap } from './db.js';
+import { sb, q, loadPeople, personTasks, buildActionMap, attachAttendees } from './db.js';
 import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField, actDot } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_ROLES } from './config.js';
@@ -18,6 +18,20 @@ export async function renderPerson(id) {
     q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').eq('person_id', id).gte('event_date', today()).order('event_date').order('event_time')),
     personTasks(id),
   ]);
+  // events where this person is a co-attendee (not the primary) count too
+  let allEvs = pevs;
+  if (state.hasEventPeople) {
+    const links = await q(sb.from('event_people').select('event_id').eq('person_id', id));
+    const have = new Set(pevs.map((e) => e.id));
+    const extraIds = [...new Set(links.map((l) => l.event_id))].filter((x) => !have.has(x));
+    if (extraIds.length) {
+      const extra = await q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').in('id', extraIds).gte('event_date', today()));
+      allEvs = [...pevs, ...extra].sort((a, b) => (a.event_date === b.event_date ? String(a.event_time || '').localeCompare(String(b.event_time || '')) : (a.event_date < b.event_date ? -1 : 1)));
+    }
+    await attachAttendees(allEvs);
+    // on their own page, list the OTHER attendees as the "who"
+    allEvs = allEvs.map((e) => ({ ...e, attendees: (e.attendees || []).filter((a) => a.id !== id) }));
+  }
   panelHead({ kicker: [p.tier ? `Tier ${p.tier}` : 'No tier', ...(p.circles || [])].join(' · '), title: p.name,
     actions: `<a class="pill" href="#/p/${p.id}/edit">Edit</a>` });
   const d = dueInfo(p);
@@ -59,8 +73,8 @@ export async function renderPerson(id) {
     ${sec('Tasks', ptasks.length)}
     ${taskList(ptasks.map((x) => ({ ...x, person: null })), 'None open.')}
 
-    ${sec('Upcoming events', pevs.length)}
-    ${evList(pevs, 'None scheduled.', true)}
+    ${sec('Upcoming events', allEvs.length)}
+    ${evList(allEvs, 'None scheduled.', true)}
 
     ${sec('History', ints.length)}
     <div class="card">${ints.length ? `<ul class="list">${ints.map((i) => `<li class="fu"><div class="main"><span class="t">${esc(i.summary)}</span>

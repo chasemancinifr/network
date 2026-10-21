@@ -38,6 +38,7 @@ export const state = {
   hasCategory: false, // set true at boot once the 0003 migration's column exists
   hasImportance: false, // set true at boot once the 0004 migration's column exists
   hasSeries: false, // set true at boot once the 0005 migration's columns exist
+  hasEventPeople: false, // set true at boot once the 0006 migration's table exists
   intKind: 'all',
   intQ: '',
   intWeek: 0,

@@ -127,8 +127,8 @@ export async function renderDashboard() {
     ${insightsHtml}
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Needs attention', attentionAll.length, '', attentionAll.length ? 'amber' : '')}
-      ${stale.length ? `<ul class="list card">${stale.map((p, i) => { const row = personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id])); return i < 8 ? row : row.replace('<li>', '<li hidden data-attn-more>'); }).join('')}</ul>
-        <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.${attentionAll.length > 8 ? ` <a href="#" id="attnAll">Show all ${attentionAll.length}</a>` : ''}</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
+      ${stale.length ? `<ul class="list card">${stale.slice(0, 8).map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
+        <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.${attentionAll.length > 8 ? ` <a href="#/overdue">See all ${attentionAll.length} on the Overdue page</a>` : ''}</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
       ${sec('Events coming up', upcoming.length)}
       ${upcoming.length ? evList(upcoming, '', true) : '<div class="card empty">Nothing on the calendar.</div>'}
       <div id="evSlot"></div>
@@ -166,8 +166,6 @@ export async function renderDashboard() {
     else ({ rels: F.rels, tiers: F.tiers, circles: F.circles })[b.dataset.g].add(b.dataset.k);
     location.hash = '#/people';
   }));
-  const attnAll = document.getElementById('attnAll');
-  if (attnAll) attnAll.onclick = (e) => { e.preventDefault(); $view.querySelectorAll('[data-attn-more]').forEach((li) => (li.hidden = false)); attnAll.remove(); };
   document.getElementById('signout').onclick = async (e) => { e.preventDefault(); await sb.auth.signOut(); };
 }
 
@@ -209,11 +207,16 @@ export async function renderToday() {
 // ---------- overdue ----------
 export async function renderOverdue() {
   setHead({ kicker: 'Attention', title: 'Overdue', tab: 'overdue', add: true });
-  const [people, fus, tasks] = await Promise.all([loadPeople(), openFollowups(), openTasksSoft()]);
+  const [people, fus, tasks, actMap] = await Promise.all([loadPeople(), openFollowups(), openTasksSoft(), openActionMap()]);
   const t = today();
   const people_ = people.map((p) => ({ p, d: dueInfo(p) })).filter((x) => x.d && x.d.overdue);
   const late = fus.filter((f) => f.due_date && f.due_date < t);
   const lateTasks = tasks.filter((x) => x.due_date && x.due_date < t);
+  // needs attention (same rule as the dashboard): Tier A/B, no logged
+  // conversation in 30+ days, Mohawk Honda people excluded
+  const quietDays = (p) => (p.last_contact ? daysBetween(p.last_contact, t) : Infinity);
+  const attention = people.filter((p) => (p.tier === 'A' || p.tier === 'B') && !(p.circles || []).includes('Mohawk Honda') && quietDays(p) >= 30)
+    .sort((a, b) => a.tier.localeCompare(b.tier) || quietDays(b) - quietDays(a) || a.name.localeCompare(b.name));
   // last interaction per overdue person, to ground the touch prompts
   const ids = [...new Set([...people_.map((x) => x.p.id), ...late.map((f) => f.person && f.person.id).filter(Boolean)])];
   const lastById = {};
@@ -231,8 +234,11 @@ export async function renderOverdue() {
       <span class="main"><span class="name">${esc(x.p.name)}</span><span class="meta">${esc(personMeta(x.p))}</span></span>
       ${st('red', x.d.label)}</a>
       ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;
-  $kicker.textContent = `Attention · ${people_.length + late.length + lateTasks.length} items`;
+  $kicker.textContent = `Attention · ${attention.length + people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
+    ${sec('Needs attention', attention.length, '', attention.length ? 'amber' : '')}
+    ${attention.length ? `<ul class="list card">${attention.map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
+    <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
     ${people.some((p) => p.cadence_days) ? `${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
     ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}` : ''}
     ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
@@ -433,7 +439,7 @@ export async function editInteraction(id, onDone = () => renderInteractions()) {
   const root = $pBody;
   root.innerHTML = `<form class="card form" id="ief">
     <div class="grid2">
-      <div><label class="lbl" for="ie_person">Person</label><select class="field" id="ie_person"><option value="">No person</option>${people.map((p) => `<option value="${p.id}"${p.id === it.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div>${personPicker({ id: 'ie_person', people, selected: it.person_id || '' })}</div>
       <div><label class="lbl" for="ie_kind">Type</label><select class="field" id="ie_kind">${KINDS.map((k) => `<option${k === it.kind ? ' selected' : ''}>${k}</option>`).join('')}</select></div>
     </div>
     <div class="grid2">
@@ -442,6 +448,7 @@ export async function editInteraction(id, onDone = () => renderInteractions()) {
     </div>
     <label class="lbl" for="ie_summary">What happened</label><textarea class="field" id="ie_summary" required style="min-height:90px">${esc(it.summary || '')}</textarea>
     <div class="actions" style="margin-top:14px"><button class="btn primary">Save</button><button type="button" class="btn" id="ie_cancel">Cancel</button></div></form>`;
+  bindPersonPickers(root);
   document.getElementById('ie_cancel').onclick = () => closePanel();
   document.getElementById('ief').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);

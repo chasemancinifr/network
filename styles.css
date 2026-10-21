@@ -434,3 +434,7 @@ li.fu .main{padding-right:86px}
 /* family sub-rows sit indented under the Family parent row */
 .chk.sub { padding-left: 26px; }
 .chk.sub .t { font-weight: 400; }
+/* multi-person picker: searchable checkbox list */
+.mplist { max-height: 190px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
+.mpitem { display: flex; gap: 9px; align-items: center; padding: 6px 0; cursor: pointer; }
+.mpitem input { width: 17px; height: 17px; accent-color: var(--amber); flex: none; }

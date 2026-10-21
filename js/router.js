@@ -1,6 +1,6 @@
 // Router: hash routes → pages or the slide-over panel, plus boot.
 
-import { sb, probeActionCategory, probeActionImportance, probeSeries } from './db.js';
+import { sb, probeActionCategory, probeActionImportance, probeSeries, probeEventPeople } from './db.js';
 import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
@@ -72,7 +72,7 @@ export function boot() {
   window.addEventListener('hashchange', closeMore);
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
-    if (!!session !== was) { state.people = null; (session ? pullSettings() : Promise.resolve()).then(() => probeActionCategory()).then(() => probeActionImportance()).then(() => probeSeries()).then(() => route()); }
+    if (!!session !== was) { state.people = null; (session ? pullSettings() : Promise.resolve()).then(() => probeActionCategory()).then(() => probeActionImportance()).then(() => probeSeries()).then(() => probeEventPeople()).then(() => route()); }
   });
 
   let bootDone = false;
@@ -87,6 +87,7 @@ export function boot() {
       await probeActionCategory();
       await probeActionImportance();
       await probeSeries();
+      await probeEventPeople();
       await route();
     } catch (e) {
       console.error('[boot]', e);

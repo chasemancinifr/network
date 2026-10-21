@@ -34,8 +34,44 @@ export const openFollowups = () => q(sb.from('follow_ups').select('id,person_id,
   .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));
 // scheduled events: dated things on the calendar (birthday party, dinner, flight) —
 // deliberately separate from follow-ups, which are action items
-export const loadEvents = () => q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
-  .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
+export async function loadEvents() {
+  const rows = await q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
+    .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
+  return attachAttendees(rows);
+}
+// event_people probe: the 0006 migration may not have been run yet.
+export async function probeEventPeople() {
+  try {
+    const { error } = await Promise.race([
+      sb.from('event_people').select('event_id').limit(1),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('probe timeout')), 6000)),
+    ]);
+    state.hasEventPeople = !error;
+  } catch { state.hasEventPeople = false; }
+  return state.hasEventPeople;
+}
+// Fill each event row's `attendees` (array of {id,name}) from event_people;
+// without the 0006 table, the primary person alone is the attendee list.
+export async function attachAttendees(rows) {
+  if (!rows.length) return rows;
+  if (state.hasEventPeople) {
+    const links = await q(sb.from('event_people').select('event_id,person:people(id,name)').in('event_id', rows.map((r) => r.id)));
+    const byEv = {};
+    links.forEach((l) => { if (l.person) (byEv[l.event_id] ||= []).push(l.person); });
+    rows.forEach((r) => { r.attendees = byEv[r.id] || (r.person ? [r.person] : []); });
+  } else rows.forEach((r) => { r.attendees = r.person ? [r.person] : []; });
+  return rows;
+}
+// Replace the attendee set of one or more events with exactly `personIds`.
+export async function syncEventAttendees(eventIds, personIds) {
+  if (!state.hasEventPeople || !eventIds.length) return;
+  await q(sb.from('event_people').delete().in('event_id', eventIds));
+  if (personIds.length) {
+    const rows = [];
+    eventIds.forEach((eid) => personIds.forEach((pid) => rows.push({ event_id: eid, person_id: pid })));
+    await q(sb.from('event_people').insert(rows));
+  }
+}
 // series-column probe: the 0005 migration may not have been run yet.
 // Repeating creates still work without it (standalone copies); the
 // edit/delete scope UI only appears once the columns exist.

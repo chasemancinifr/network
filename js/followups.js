@@ -1,7 +1,7 @@
 // Follow-ups: person-centric nudges. Rows, bindings, editor, next-touch prompts.
 
 import { sb, q, loadPeople, withArchivedPerson } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge } from './ui.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, personPicker, bindPersonPickers } from './ui.js';
 import { esc, today, daysBetween, upcomingBirthdays } from './utils.js';
 import { state } from './config.js';
 
@@ -75,7 +75,7 @@ export async function editFollowup(fuId, rerender) {
   root.innerHTML = `<form class="card form" id="fef">
     <label class="lbl" for="fe_title">Title</label><input class="field" id="fe_title" required value="${esc(f.title)}">
     <div class="grid2"><div><label class="lbl" for="fe_due">Due date</label><input class="field" id="fe_due" type="date" value="${esc(f.due_date || '')}"></div>
-    <div><label class="lbl" for="fe_person">Person</label><select class="field" id="fe_person">${people.map((p) => `<option value="${p.id}"${p.id === f.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
+    <div>${personPicker({ id: 'fe_person', people, selected: f.person_id, required: true })}</div></div>
     <label class="lbl" for="fe_detail">Detail (optional)</label><textarea class="field" id="fe_detail" style="min-height:90px" placeholder="Anything extra — context, what 'done' looks like">${esc(f.detail || '')}</textarea>
     ${cat.html}
     ${imp.html}
@@ -83,7 +83,7 @@ export async function editFollowup(fuId, rerender) {
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button></div></form>`;
   let status = f.status;
   root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
-  cat.bind(root); imp.bind(root);
+  cat.bind(root); imp.bind(root); bindPersonPickers(root);
   document.getElementById('fe_cancel').onclick = () => dismissPanel();
   document.getElementById('fef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);

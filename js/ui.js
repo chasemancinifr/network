@@ -134,6 +134,27 @@ export function bindPersonPickers(root) {
   });
 }
 
+// ---------- multi-person picker (events with several people) ----------
+// Type-to-find box over a checkbox list. get() returns the checked ids in
+// list order — the first one becomes the event's primary person.
+export function peopleMultiField({ people, selectedIds = [] }) {
+  const sel = new Set(selectedIds);
+  let rootEl = null;
+  return {
+    html: `<label class="lbl">People</label>
+      <input class="field" type="search" data-mpsearch placeholder="Type a name to find…" autocomplete="off" autocapitalize="words" style="margin-bottom:6px">
+      <div class="mplist">${people.map((p) => `<label class="mpitem" data-mpname="${esc(p.name.toLowerCase())}"><input type="checkbox" data-mpid="${p.id}"${sel.has(p.id) ? ' checked' : ''}><span>${esc(p.name)}</span></label>`).join('')}</div>`,
+    bind(root) {
+      rootEl = root;
+      const inp = root.querySelector('[data-mpsearch]');
+      if (!inp) return;
+      const items = [...root.querySelectorAll('.mpitem')];
+      inp.oninput = () => { const query = inp.value.trim().toLowerCase(); items.forEach((el) => (el.style.display = !query || el.dataset.mpname.includes(query) ? '' : 'none')); };
+    },
+    get: () => (rootEl ? [...rootEl.querySelectorAll('[data-mpid]:checked')].map((c) => c.dataset.mpid) : []),
+  };
+}
+
 // ---------- action categories (follow-ups + tasks) ----------
 // Pill selector for the follow-up/task forms. Renders nothing until the 0003
 // migration has added the category column (state.hasCategory, probed at boot).

@@ -2,7 +2,7 @@
 // link a person and may carry a due date — neither is required.
 
 import { sb, q, loadPeople, withArchivedPerson, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel } from './ui.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, personPicker, bindPersonPickers } from './ui.js';
 import { esc, today } from './utils.js';
 import { state } from './config.js';
 
@@ -41,7 +41,7 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
     <label class="lbl">Task</label><input class="field" id="tkt" required placeholder="What needs doing" maxlength="140">
     <div class="grid2">
       <div><label class="lbl">Due (optional)</label><input class="field" type="date" id="tkd" value="${esc(date)}"></div>
-      <div><label class="lbl">Person (optional)</label><select class="field" id="tkp"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${String(personId ?? '') === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <div>${personPicker({ id: 'tkp', people, selected: String(personId ?? ''), label: 'Person (optional)' })}</div>
     </div>
     ${rep.html}
     <label class="lbl">Detail (optional)</label><textarea class="field" id="tkn" style="min-height:70px"></textarea>
@@ -49,7 +49,7 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
     ${imp.html}
     <div class="actions" style="margin-top:14px"><button class="btn primary">Add task</button><button type="button" class="btn" id="tkx">Cancel</button></div></form>`;
   document.getElementById('tkx').onclick = () => (slot.innerHTML = '');
-  cat.bind(slot); imp.bind(slot); rep.bind(slot);
+  cat.bind(slot); imp.bind(slot); rep.bind(slot); bindPersonPickers(slot);
   document.getElementById('tkf').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const row = { title: document.getElementById('tkt').value.trim(), due_date: document.getElementById('tkd').value || null,
@@ -93,7 +93,7 @@ export async function editTask(taskId, rerender) {
   root.innerHTML = `<form class="card form" id="tef">
     <label class="lbl" for="te_title">Title</label><input class="field" id="te_title" required value="${esc(t.title)}">
     <div class="grid2"><div><label class="lbl" for="te_due">Due date</label><input class="field" id="te_due" type="date" value="${esc(t.due_date || '')}"></div>
-    <div><label class="lbl" for="te_person">Person (optional)</label><select class="field" id="te_person"><option value="">—</option>${people.map((p) => `<option value="${p.id}"${p.id === t.person_id ? ' selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div></div>
+    <div>${personPicker({ id: 'te_person', people, selected: t.person_id || '', label: 'Person (optional)' })}</div></div>
     <label class="lbl" for="te_detail">Detail (optional)</label><textarea class="field" id="te_detail" style="min-height:90px">${esc(t.detail || '')}</textarea>
     ${cat.html}
     ${imp.html}
@@ -118,7 +118,7 @@ export async function editTask(taskId, rerender) {
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
     b.disabled = true; await q(sb.from('tasks').delete().eq('id', taskId)); toast('Deleted'); closePanel(); rerender();
   };
-  cat.bind(root); imp.bind(root); rep.bind(root);
+  cat.bind(root); imp.bind(root); rep.bind(root); bindPersonPickers(root);
   if (scp) scp.bind(root);
   document.getElementById('tef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
