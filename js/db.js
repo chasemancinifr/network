@@ -35,7 +35,10 @@ export const openFollowups = () => q(sb.from('follow_ups').select('id,person_id,
 // scheduled events: dated things on the calendar (birthday party, dinner, flight) —
 // deliberately separate from follow-ups, which are action items
 export async function loadEvents() {
-  const rows = await q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people(id,name,tier)')
+  // the !events_person_id_fkey hint is required: since 0006, events reach
+  // people two ways (direct FK + via event_people) and PostgREST refuses
+  // an unhinted people embed as ambiguous (PGRST201)
+  const rows = await q(sb.from('events').select('id,title,event_date,event_time,notes,person_id,person:people!events_person_id_fkey(id,name,tier)')
     .order('event_date', { ascending: true }).order('event_time', { ascending: true, nullsFirst: false }));
   return attachAttendees(rows);
 }
