@@ -236,15 +236,15 @@ export async function renderOverdue() {
       ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;
   $kicker.textContent = `Attention · ${attention.length + people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
-    ${sec('Needs attention', attention.length, '', attention.length ? 'amber' : '')}
-    ${attention.length ? `<ul class="list card">${attention.map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
-    <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
     ${people.some((p) => p.cadence_days) ? `${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
     ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}` : ''}
     ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
     ${fuList(late, 'No follow-ups past their due date.', (f) => { const fp = fullPerson(f); return ntouch(nextTouch(fp, lastById[fp.id])); })}
     ${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
-    ${taskList(lateTasks, 'No tasks past their due date.')}`;
+    ${taskList(lateTasks, 'No tasks past their due date.')}
+    ${sec('Needs attention', attention.length, '', attention.length ? 'amber' : '')}
+    ${attention.length ? `<ul class="list card">${attention.map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
+    <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}`;
   bindFollowups(renderOverdue);
   bindTasks(renderOverdue);
 }
