@@ -178,12 +178,16 @@ export async function renderToday() {
   const week = addDays(t, 7);
   const dueTodayFu = fus.filter((f) => f.due_date === t);
   const dueTodayTask = tasks.filter((x) => x.due_date === t);
+  // Chase's rule: open items with no due date always show on the current
+  // day — they ride along in the Due today section until they're done
+  const undatedFu = fus.filter((f) => !f.due_date);
+  const undatedTask = tasks.filter((x) => !x.due_date);
   const tmFu = fus.filter((f) => f.due_date === tomorrow);
   const tmTask = tasks.filter((x) => x.due_date === tomorrow);
   const weekFu = fus.filter((f) => f.due_date && f.due_date > tomorrow && f.due_date <= week);
   const weekTask = tasks.filter((x) => x.due_date && x.due_date > tomorrow && x.due_date <= week);
   const weekEvs = evs.filter((e) => e.event_date >= t && e.event_date <= week);
-  const nToday = dueTodayFu.length + dueTodayTask.length;
+  const nToday = dueTodayFu.length + dueTodayTask.length + undatedFu.length + undatedTask.length;
   const nTm = tmFu.length + tmTask.length;
   const nWeek = weekFu.length + weekTask.length + weekEvs.length;
   const dayBlock = (fus_, tasks_, empty) => `
@@ -192,7 +196,7 @@ export async function renderToday() {
     ${!fus_.length && !tasks_.length ? `<div class="card empty">${empty}</div>` : ''}`;
   $view.innerHTML = `
     ${sec('Due today', nToday, '', nToday ? 'amber' : '')}
-    ${dayBlock(dueTodayFu, dueTodayTask, 'Nothing due today.')}
+    ${dayBlock([...dueTodayFu, ...undatedFu], [...dueTodayTask, ...undatedTask], 'Nothing due today.')}
     ${sec('Tomorrow', nTm, '', nTm ? 'amber' : '')}
     ${dayBlock(tmFu, tmTask, 'Nothing due tomorrow.')}
     ${sec('Rest of the week', nWeek)}
