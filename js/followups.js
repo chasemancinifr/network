@@ -80,7 +80,12 @@ export async function editFollowup(fuId, rerender) {
     ${cat.html}
     ${imp.html}
     <label class="lbl">Status</label><div class="pills" id="feStatus">${['open', 'parked', 'closed'].map((s) => `<button type="button" class="pill${f.status === s ? ' on' : ''}" data-s="${s}">${s}</button>`).join('')}</div>
-    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button></div></form>`;
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button><button type="button" class="btn danger" id="fe_del" style="margin-left:auto">Delete</button></div></form>`;
+  document.getElementById('fe_del').onclick = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
+    b.disabled = true; await q(sb.from('follow_ups').delete().eq('id', fuId)); toast('Deleted'); closePanel(); rerender();
+  };
   let status = f.status;
   root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
   cat.bind(root); imp.bind(root); bindPersonPickers(root);
