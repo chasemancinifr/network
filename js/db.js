@@ -20,6 +20,15 @@ export async function loadPeople(force) {
     .is('archived_at', null).order('name'));
   return state.people;
 }
+// Editors build person dropdowns from loadPeople() (active only). If the item
+// being edited belongs to an archived person, they'd be missing from the
+// list — and saving would silently reassign or unlink them. Append the
+// archived person (labelled) so the current value survives an edit untouched.
+export async function withArchivedPerson(people, personId) {
+  if (!personId || people.some((p) => p.id === personId)) return people;
+  const { data } = await sb.from('people').select('id,name').eq('id', personId).maybeSingle();
+  return data ? [...people, { id: data.id, name: `${data.name} (archived)` }] : people;
+}
 // the one query for open follow-ups (unchanged from v1); reused by Today, Overdue and Calendar
 export const openFollowups = () => q(sb.from('follow_ups').select('id,person_id,title,due_date,status,created_at' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + ',person:people(id,name,tier)').eq('status', 'open')
   .order('due_date', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }));

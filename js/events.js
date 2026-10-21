@@ -1,7 +1,7 @@
 // Scheduled events: dated things on the calendar (birthday party, dinner,
 // flight). Deliberately separate from follow-ups, which are action items.
 
-import { sb, q, loadPeople, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
+import { sb, q, loadPeople, withArchivedPerson, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
 import { $view, st, monoDate, toast, closePanel, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel } from './ui.js';
 import { esc, today, fmtTime, addDays, addMonths } from './utils.js';
 import { state } from './config.js';
@@ -42,6 +42,7 @@ export function bindEvents(rerender, root = $view, onEdit) {
 }
 // shared add/edit event form; renders into `slot`, calls onDone after save
 export async function openEventForm(slot, { ev = null, personId = null, date = today(), people, onDone }) {
+  if (ev?.person_id) people = await withArchivedPerson(people, ev.person_id);
   const rep = repeatField(ev?.series_rule || 'none');
   const siblings = ev && ev.series_id ? await seriesSiblings('events', ev.series_id) : [];
   const isSeries = siblings.length > 1;

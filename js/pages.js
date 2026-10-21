@@ -1,6 +1,6 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
-import { sb, q, loadPeople, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
+import { sb, q, loadPeople, withArchivedPerson, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank, toast, $pBody, personPicker, bindPersonPickers } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES, isFamilyRel } from './config.js';
@@ -26,7 +26,7 @@ export async function renderDashboard() {
     q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(t, -63)).limit(2000)),
     openFollowups(), openTasksSoft(), loadEvents()]);
   const streak = streakOf(intRows, t);
-  const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -7)).length;
+  const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -6)).length;
   const newMonth = people.filter((p) => p.created_at && p.created_at.slice(0, 7) === t.slice(0, 7)).length;
   // needs attention: Tier A/B with no logged conversation in 30+ days (never logged counts).
   // Mohawk Honda people are left out: Chase sees them daily, so a contact timer says nothing.
@@ -78,7 +78,7 @@ export async function renderDashboard() {
   const actMap = buildActionMap(fus, tasks);
 
   // ---- insights ----
-  const intsPrev7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -14) && r.happened_at < addDays(t, -7)).length;
+  const intsPrev7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -13) && r.happened_at < addDays(t, -6)).length;
   const overdueN = fus.filter((f) => f.due_date && f.due_date < t).length + tasks.filter((x) => x.due_date && x.due_date < t).length;
   const openN = fus.length + tasks.length;
   const actEntries = Object.values(actMap).sort((a, b) => b.n - a.n);
@@ -426,7 +426,7 @@ async function renderRecentLegacy() {
 export async function editInteraction(id, onDone = () => renderInteractions()) {
   const it = await q(sb.from('interactions').select('id,kind,happened_at,summary,duration_min,person_id').eq('id', id).single());
   if (!it) return;
-  const people = await loadPeople();
+  const people = await withArchivedPerson(await loadPeople(), it.person_id);
   openPanel();
   const who = people.find((p) => p.id === it.person_id);
   panelHead({ kicker: who ? who.name : 'Interaction', title: 'Edit interaction' });
@@ -707,7 +707,7 @@ export async function renderCalendar() {
     evs.forEach((e) => add(e.event_date, { kind: 'ev', e, cls: e.event_date < t ? 'gray' : 'amber', col: pCol(e.person?.id) }));
     ints.forEach((i) => { if (i.happened_at) add(i.happened_at.slice(0, 10), { kind: 'int', i, cls: 'past', col: pCol(i.person?.id) }); });
     people.forEach((p) => {
-      if (p.birth_month) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray', col: pCol(p.id) });
+      if (p.birth_month && p.birth_day) add(key(C.y, p.birth_month - 1, p.birth_day), { kind: 'bday', p, cls: 'gray', col: pCol(p.id) });
       if (p.cadence_days) {
         const due = p.last_contact ? addDays(p.last_contact, p.cadence_days) : t;
         add(due, { kind: 'cad', p, cls: due <= t ? 'red' : 'gray', due, col: pCol(p.id) });

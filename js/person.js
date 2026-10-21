@@ -166,9 +166,15 @@ export async function renderEdit(id) {
     if (people.some((x) => x.id !== id && (x.name.toLowerCase() === (name || '').toLowerCase() || (x.aliases || []).some((a) => a.toLowerCase() === (name || '').toLowerCase())))) {
       toast(`${name} is already in your network`, true); return;
     }
+    const bm = n('bm'), bd = n('bd'), by = n('by'), cad = n('cadence_days');
+    if (bm !== null && (bm < 1 || bm > 12)) { toast('Birthday month must be 1–12', true); return; }
+    if (bd !== null && (bd < 1 || bd > 31)) { toast('Birthday day must be 1–31', true); return; }
+    if (bd !== null && bm === null) { toast('Birthday day needs a month too', true); return; }
+    if (by !== null && (by < 1900 || by > +today().slice(0, 4))) { toast('Birthday year looks off', true); return; }
+    if (cad !== null && cad < 1) { toast('Cadence must be at least 1 day', true); return; }
     const row = { name, tier: tier || null, circles: [...sel], relationship: titleCase(v('relationship')) || null, role: v('role'), dept: v('dept'), org: v('org'),
-      phone: v('phone'), email: v('email'), location: v('location'), cadence_days: n('cadence_days'), how_met: v('how_met'), notes: v('notes'),
-      birth_month: n('bm'), birth_day: n('bd'), birth_year: n('by') };
+      phone: v('phone'), email: v('email'), location: v('location'), cadence_days: cad, how_met: v('how_met'), notes: v('notes'),
+      birth_month: bm, birth_day: bd, birth_year: by };
     e.submitter && (e.submitter.disabled = true);
     try {
       const saved = id ? await q(sb.from('people').update(row).eq('id', id).select('id').single())

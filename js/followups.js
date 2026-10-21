@@ -1,6 +1,6 @@
 // Follow-ups: person-centric nudges. Rows, bindings, editor, next-touch prompts.
 
-import { sb, q, loadPeople } from './db.js';
+import { sb, q, loadPeople, withArchivedPerson } from './db.js';
 import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge } from './ui.js';
 import { esc, today, daysBetween, upcomingBirthdays } from './utils.js';
 import { state } from './config.js';
@@ -65,7 +65,7 @@ export async function editFollowup(fuId, rerender) {
   const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '');
   const f = await q(sb.from('follow_ups').select(fields).eq('id', fuId).single());
   if (!f) return;
-  const people = await loadPeople();
+  const people = await withArchivedPerson(await loadPeople(), f.person_id);
   const cat = categoryField(f.category);
   const imp = importanceField(f.importance);
   openPanel();

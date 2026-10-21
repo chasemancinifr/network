@@ -49,6 +49,9 @@ export function streakOf(rows, t) {
 }
 export function bday(p) {
   if (!p.birth_month) return '';
+  // month known but day unknown: show the month only (day 0 would render as
+  // the last day of the previous month — a wrong date)
+  if (!p.birth_day) return new Date(2000, p.birth_month - 1, 1).toLocaleDateString(undefined, { month: 'long' });
   const s = new Date(2000, p.birth_month - 1, p.birth_day).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
   return p.birth_year ? `${s}, ${p.birth_year}` : s;
 }
@@ -56,7 +59,7 @@ export function dueInfo(p) {
   if (!p.cadence_days) return null;
   if (!p.last_contact) return { overdue: true, label: 'no contact logged' };
   const left = p.cadence_days - daysBetween(p.last_contact, today());
-  return { overdue: left <= 0, label: left <= 0 ? `${-left}d overdue` : `due in ${left}d`, left };
+  return { overdue: left <= 0, label: left < 0 ? `${-left}d overdue` : left === 0 ? 'due today' : `due in ${left}d`, left };
 }
 export function fmtTime(t) {
   if (!t) return '';
@@ -65,7 +68,7 @@ export function fmtTime(t) {
 }
 export function upcomingBirthdays(people, days) {
   const t = today(); const y = +t.slice(0, 4);
-  return people.filter((p) => p.birth_month).map((p) => {
+  return people.filter((p) => p.birth_month && p.birth_day).map((p) => {
     let d = `${y}-${String(p.birth_month).padStart(2, '0')}-${String(p.birth_day).padStart(2, '0')}`;
     if (d < t) d = `${y + 1}` + d.slice(4);
     return { p, in: daysBetween(t, d) };

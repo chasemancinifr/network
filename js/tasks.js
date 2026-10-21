@@ -1,7 +1,7 @@
 // Tasks: general to-dos. Follow-ups stay person-centric nudges. A task may
 // link a person and may carry a due date — neither is required.
 
-import { sb, q, loadPeople, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
+import { sb, q, loadPeople, withArchivedPerson, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
 import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel } from './ui.js';
 import { esc, today } from './utils.js';
 import { state } from './config.js';
@@ -79,7 +79,7 @@ export async function editTask(taskId, rerender) {
   const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + (state.hasSeries ? ',series_id,series_rule,series_index' : '');
   const t = await q(sb.from('tasks').select(fields).eq('id', taskId).single());
   if (!t) return;
-  const people = await loadPeople();
+  const people = await withArchivedPerson(await loadPeople(), t.person_id);
   const cat = categoryField(t.category);
   const imp = importanceField(t.importance);
   const rep = repeatField(t.series_rule || 'none');
