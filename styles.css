@@ -87,7 +87,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   .nav a.on { background: var(--surface-2); }
   .nav a.on::before { top: 8px; bottom: 8px; left: 0; right: auto; width: 2px; height: auto; }
   .nav a:hover { color: var(--text); }
-  .app:has(.nav:not([hidden])) .shell { margin-left: max(208px, calc(50% - 560px + 104px)); max-width: 1120px; padding-bottom: 48px; }
+  .app:has(.nav:not([hidden])) .shell { margin-left: max(208px, calc(50% - 620px + 104px)); max-width: 1240px; padding-bottom: 48px; }
 }
 /* eight tabs: let the mobile bar scroll sideways instead of crushing labels */
 @media (max-width: 899px) {
@@ -438,3 +438,19 @@ li.fu .main{padding-right:86px}
 .mplist { max-height: 190px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; }
 .mpitem { display: flex; gap: 9px; align-items: center; padding: 6px 0; cursor: pointer; }
 .mpitem input { width: 17px; height: 17px; accent-color: var(--amber); flex: none; }
+
+/* ---------- desktop page organization (laptop, >=900px) ----------
+   Pages stop stretching: sections pair up in two columns, long single
+   lists split across two balanced columns, calendar sits beside its day.
+   Mobile layouts are untouched (everything here is min-width gated). */
+@media (min-width: 900px) {
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 28px; align-items: start; }
+  .cols > .blk { min-width: 0; }
+  .blk.wide { grid-column: 1 / -1; }
+  .setgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px 28px; align-items: start; }
+  .setgrid > .blk { min-width: 0; }
+  ul.list.split2 { columns: 2; column-gap: 28px; column-rule: 1px solid var(--line); }
+  ul.list.split2 > li { break-inside: avoid; }
+  .cal-wrap { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0 28px; align-items: start; }
+  .cal-wrap .cal-col { min-width: 0; }
+}

@@ -104,7 +104,7 @@ export async function renderDashboard() {
     return `<ul class="list">${top.map((e) => { const p = byId[e.pid]; return p ? `<li class="fu"><div class="main"><span class="t"><a href="#/p/${p.id}">${esc(p.name)}</a></span><span class="meta">${e.n} open action${e.n === 1 ? '' : 's'}</span></div></li>` : ''; }).join('')}</ul>`;
   };
   const staleDetail = () => `<ul class="list">${stale90List.map((p) => personRow(p, st('gray', `${ago(p.last_contact)} ago`), actDot(actMap[p.id]))).join('')}</ul>`;
-  const insightsHtml = insights.length ? `<div class="card" style="margin-top:12px;padding:6px 14px">${insights.map((ins, i) => `
+  const insightsHtml = insights.length ? `<div class="card" style="padding:6px 14px">${insights.map((ins, i) => `
     <button class="insight" data-ins="${i}" aria-expanded="false"><i class="dotk" style="background:${ins.c}"></i><span>${esc(ins.t)}</span>${ins.expand ? chevSvg : ''}</button>${ins.expand ? `<div class="insight-detail" id="insDet${i}" hidden></div>` : ''}`).join('')}</div>` : '';
   const reminders = [
     ...fus.map((f) => ({ due: f.due_date, created: f.created_at, html: withBadge(fuItem(f), 'follow-up', 'fu') })),
@@ -118,13 +118,15 @@ export async function renderDashboard() {
       <span class="stat"><span class="k">Day streak</span><span class="v">${streak ? streak : '\u2013'}</span></span>
       <span class="stat ${attentionAll.length ? 'amber' : ''}"><span class="k">Needs attention</span><span class="v">${attentionAll.length}</span></span>
     </div>
-    <div class="card" style="margin-top:12px;padding:14px">
+    <div class="cols" style="margin-top:12px">
+    <div class="blk${insights.length ? '' : ' wide'}"><div class="card" style="padding:14px">
       ${sec('Network mix')}
       ${mixLine('Relationships', relEntries, relN[''] ? `${relN['']} people still need a relationship category.` : '', 'rels')}
       ${mixLine('Tiers', tierEntries, '', 'tiers')}
       ${mixLine('Circles \u00b7 top 8', circleEntries, '', 'circles')}
+    </div></div>
+    ${insights.length ? `<div class="blk">${insightsHtml}</div>` : ''}
     </div>
-    ${insightsHtml}
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${sec('Needs attention', attentionAll.length, '', attentionAll.length ? 'amber' : '')}
       ${stale.length ? `<ul class="list card">${stale.slice(0, 8).map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
@@ -195,13 +197,15 @@ export async function renderToday() {
     ${tasks_.length ? `<div style="margin-top:${fus_.length ? 8 : 0}px">${taskList(tasks_, '')}</div>` : ''}
     ${!fus_.length && !tasks_.length ? `<div class="card empty">${empty}</div>` : ''}`;
   $view.innerHTML = `
-    ${sec('Due today', nToday, '', nToday ? 'amber' : '')}
-    ${dayBlock([...dueTodayFu, ...undatedFu], [...dueTodayTask, ...undatedTask], 'Nothing due today.')}
-    ${sec('Tomorrow', nTm, '', nTm ? 'amber' : '')}
-    ${dayBlock(tmFu, tmTask, 'Nothing due tomorrow.')}
-    ${sec('Rest of the week', nWeek)}
+    <div class="cols">
+    <div class="blk">${sec('Due today', nToday, '', nToday ? 'amber' : '')}
+    ${dayBlock([...dueTodayFu, ...undatedFu], [...dueTodayTask, ...undatedTask], 'Nothing due today.')}</div>
+    <div class="blk">${sec('Tomorrow', nTm, '', nTm ? 'amber' : '')}
+    ${dayBlock(tmFu, tmTask, 'Nothing due tomorrow.')}</div>
+    <div class="blk">${sec('Rest of the week', nWeek)}
     ${weekEvs.length ? evList(weekEvs, '', true) : ''}
-    ${weekFu.length || weekTask.length ? `<div style="margin-top:${weekEvs.length ? 8 : 0}px">${dayBlock(weekFu, weekTask, '')}</div>` : (!weekEvs.length ? '<div class="card empty">Nothing else this week.</div>' : '')}
+    ${weekFu.length || weekTask.length ? `<div style="margin-top:${weekEvs.length ? 8 : 0}px">${dayBlock(weekFu, weekTask, '')}</div>` : (!weekEvs.length ? '<div class="card empty">Nothing else this week.</div>' : '')}</div>
+    </div>
     <div id="evSlot"></div>`;
   bindFollowups(renderToday);
   bindTasks(renderToday);
@@ -240,15 +244,17 @@ export async function renderOverdue() {
       ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;
   $kicker.textContent = `Attention · ${attention.length + people_.length + late.length + lateTasks.length} items`;
   $view.innerHTML = `
-    ${people.some((p) => p.cadence_days) ? `${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
-    ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}` : ''}
-    ${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
-    ${fuList(late, 'No follow-ups past their due date.', (f) => { const fp = fullPerson(f); return ntouch(nextTouch(fp, lastById[fp.id])); })}
-    ${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
-    ${taskList(lateTasks, 'No tasks past their due date.')}
-    ${sec('Needs attention', attention.length, '', attention.length ? 'amber' : '')}
-    ${attention.length ? `<ul class="list card">${attention.map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
-    <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}`;
+    <div class="cols">
+    ${people.some((p) => p.cadence_days) ? `<div class="blk">${sec('Cadence · reach out', people_.length, '', people_.length ? 'red' : '')}
+    ${people_.length ? `<ul class="list card">${people_.map(cadRow).join('')}</ul>` : '<div class="card empty">Nobody past their cadence.</div>'}</div>` : ''}
+    <div class="blk">${sec('Follow-ups past due', late.length, '', late.length ? 'red' : '')}
+    ${fuList(late, 'No follow-ups past their due date.', (f) => { const fp = fullPerson(f); return ntouch(nextTouch(fp, lastById[fp.id])); })}</div>
+    <div class="blk">${sec('Tasks past due', lateTasks.length, '', lateTasks.length ? 'red' : '')}
+    ${taskList(lateTasks, 'No tasks past their due date.')}</div>
+    <div class="blk wide">${sec('Needs attention', attention.length, '', attention.length ? 'amber' : '')}
+    ${attention.length ? `<ul class="list card split2">${attention.map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
+    <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}</div>
+    </div>`;
   bindFollowups(renderOverdue);
   bindTasks(renderOverdue);
 }
@@ -296,7 +302,7 @@ export async function renderActions() {
       <button class="pill" id="actAddFu">+ Follow-up</button><button class="pill" id="actAddTask">+ Task</button></div>
     <div class="pills" style="margin:10px 0" role="tablist">${typ('all', 'All')}${typ('fu', 'Follow-ups')}${typ('task', 'Tasks')}<button class="pill${state.actionImpSort === 'none' ? '' : ' on'}" id="impSort" title="Sort by importance">${{ none: 'Importance', desc: 'Importance ↓', asc: 'Importance ↑' }[state.actionImpSort]}</button></div>
     ${catFilter ? `<div style="margin:0 0 10px">${catFilter}</div>` : ''}
-    <div class="card">${items.length ? `<ul class="list">${items.map((i) => i.html).join('')}</ul>` : '<div class="empty">Nothing here.</div>'}</div>`;
+    <div class="card">${items.length ? `<ul class="list split2">${items.map((i) => i.html).join('')}</ul>` : '<div class="empty">Nothing here.</div>'}</div>`;
   $view.querySelectorAll('[data-s]').forEach((b) => (b.onclick = () => { state.actionStatus = b.dataset.s; renderActions(); }));
   $view.querySelectorAll('[data-t]').forEach((b) => (b.onclick = () => { state.actionType = b.dataset.t; renderActions(); }));
   document.getElementById('impSort').onclick = () => {
@@ -758,9 +764,10 @@ export async function renderCalendar() {
         <button class="pill" id="calToday">Today</button>
         <button class="iconbtn" id="calPrev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
         <button class="iconbtn" id="calNext" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button></div>
-      <div id="evSlot"></div>
-      <div class="cal"><div class="cal-dow">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => `<div>${x}</div>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></div>
-      ${sec(new Date(C.sel + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), items.length)}
+      <div class="cal-wrap">
+      <div class="cal-col"><div id="evSlot"></div>
+      <div class="cal"><div class="cal-dow">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((x) => `<div>${x}</div>`).join('')}</div><div class="cal-grid">${cells.join('')}</div></div></div>
+      <div class="cal-col">${sec(new Date(C.sel + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), items.length)}
       ${!items.length ? '<div class="card empty">Nothing scheduled.</div>' : ''}
       ${evItems.length ? `<div style="margin-bottom:${(pItems.length || fuItems.length) ? 8 : 0}px">${evList(evItems, '')}</div>` : ''}
       ${pItems.length ? `<ul class="list card">${pItems.map((e) => personRow(e.p, e.kind === 'bday' ? st(C.sel === t ? 'amber' : 'gray', 'Birthday') : st(e.cls, e.cls === 'red' ? dueInfo(e.p).label : 'Check-in due'))).join('')}</ul>` : ''}
@@ -770,6 +777,7 @@ export async function renderCalendar() {
         const who = i.person ? `<a href="#/p/${i.person.id}">${esc(i.person.name)}</a>` : '<span class="meta">No person linked</span>';
         return `<li class="fu past"><div class="main"><span class="t">${who}</span><span class="meta">${st('gray', i.kind)}${i.duration_min ? `<span>${i.duration_min} min</span>` : ''}${i.summary ? `<span>${esc(i.summary.slice(0, 160))}</span>` : ''}</span></div><button class="mini" data-int-edit="${i.id}">Edit</button></li>`;
       }).join('')}</ul></div>` : ''}
+      </div></div>
       ${sec('Upcoming events', upcomingEvs.length, '', upcomingEvs.length ? 'amber' : '')}
       ${monthGroups.length ? monthGroups.map((g) => `<div class="flabel" style="margin-top:10px"><span>${esc(g.label)}</span></div>${evList(g.evs, '', true)}`).join('') : '<div class="card empty">No upcoming events.</div>'}
       ${pastEvs.length ? `${sec('Past events', pastEvs.length)}${evList(pastEvs.slice(0, 12), '', true)}` : ''}`;
@@ -804,12 +812,14 @@ export async function renderSettings() {
     <div class="colorrow"><input type="color" value="${hex}" data-cg="${group}" data-ck="${esc(key)}" aria-label="${esc(label)} color">
       <span class="t">${esc(label)}</span><code class="hex">${hex}</code></div>`;
   $view.innerHTML = `
-    ${sec('Relationships')}
-    <div class="card" style="padding:6px 14px">${[...REL_KEYS, ...customs].map((k) => colorRow('rel', k, k, effRel(k))).join('')}</div>
-    ${sec('Tiers')}
+    <div class="setgrid">
+    <div class="blk">${sec('Relationships')}
+    <div class="card" style="padding:6px 14px">${[...REL_KEYS, ...customs].map((k) => colorRow('rel', k, k, effRel(k))).join('')}</div></div>
+    <div class="blk">${sec('Tiers')}
     <div class="card" style="padding:6px 14px">${[...TIER_KEYS, ''].map((t) => colorRow('tier', t, t ? `Tier ${t}` : 'Unassigned', effTier(t))).join('')}</div>
     ${sec('Circles')}
-    <div class="card" style="padding:6px 14px">${circles.map((c) => colorRow('circle', c, `${c} · ${circleCounts[c]}`, effCircle(c))).join('') || '<div class="empty">No circles yet.</div>'}</div>
+    <div class="card" style="padding:6px 14px">${circles.map((c) => colorRow('circle', c, `${c} · ${circleCounts[c]}`, effCircle(c))).join('') || '<div class="empty">No circles yet.</div>'}</div></div>
+    </div>
     <p class="note">Colors and theme save to your account and show up on every device you sign in on.</p>
     <div class="linkrow"><a href="#" id="colorReset">Reset all colors</a></div>`;
   $view.querySelectorAll('[data-cg]').forEach((inp) => (inp.oninput = () => {
