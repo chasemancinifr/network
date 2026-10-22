@@ -2,7 +2,7 @@
 // flight). Deliberately separate from follow-ups, which are action items.
 
 import { sb, q, loadPeople, withArchivedPerson, attachAttendees, syncEventAttendees, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
-import { $view, st, monoDate, toast, closePanel, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, personPicker, bindPersonPickers, peopleMultiField } from './ui.js';
+import { $view, st, monoDate, toast, closePanel, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, personPicker, bindPersonPickers, peopleMultiField, parseRepeat } from './ui.js';
 import { esc, today, fmtTime, addDays, addMonths } from './utils.js';
 import { state } from './config.js';
 
@@ -23,7 +23,7 @@ export function bindEvents(rerender, root = $view, onEdit) {
           if (sibs.length > 1) {
             openSeriesDeletePanel({
               kicker: 'Delete event', title: 'Delete repeating event?',
-              note: `This is part of a ${r.series_rule} series (${sibs.length} events).`,
+              note: `This is part of a ${parseRepeat(r.series_rule).label} series (${sibs.length} events).`,
               onScope: async (scope) => {
                 if (!scope) return;
                 for (const s of scopeRows(sibs, r.series_index, scope)) await q(sb.from('events').delete().eq('id', s.id));

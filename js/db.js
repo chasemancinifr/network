@@ -2,7 +2,7 @@
 
 import { createClient } from '../supabase.js';
 import { SUPABASE_URL, SUPABASE_KEY, state } from './config.js';
-import { toast, impRank, REPEAT_OPTIONS } from './ui.js';
+import { toast, impRank, parseRepeat } from './ui.js';
 import { addDays, addMonths } from './utils.js';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
@@ -88,15 +88,39 @@ export async function probeSeries() {
   } catch { state.hasSeries = false; }
   return state.hasSeries;
 }
+// follow_ups series-column probe: the 0007 migration may not have run yet.
+// Repeat on follow-ups degrades to standalone copies until it has.
+export async function probeFuSeries() {
+  try {
+    const { error } = await Promise.race([
+      sb.from('follow_ups').select('id,series_id').limit(1),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('probe timeout')), 6000)),
+    ]);
+    state.hasFuSeries = !error;
+  } catch { state.hasFuSeries = false; }
+  return state.hasFuSeries;
+}
 // siblings of a series, ordered by position; [] when not a series member
 export async function seriesSiblings(table, seriesId) {
-  if (!state.hasSeries || !seriesId) return [];
+  if (!seriesId) return [];
   const { data, error } = await sb.from(table).select('id,series_index').eq('series_id', seriesId).order('series_index');
   return error ? [] : (data || []);
 }
-// shift a YYYY-MM-DD by `steps` of a repeat rule (weekly/monthly/yearly)
-export const shiftSeriesDate = (rule, d, steps) =>
-  rule === 'weekly' ? addDays(d, 7 * steps) : rule === 'monthly' ? addMonths(d, steps) : addMonths(d, 12 * steps);
+// shift a YYYY-MM-DD by `steps` occurrences of a repeat rule. Uniform
+// rules are arithmetic; a 'dow:1,3,5' rule walks day by day, counting
+// only dates whose weekday is in the set.
+export const shiftSeriesDate = (rule, d, steps) => {
+  if (rule === 'daily') return addDays(d, steps);
+  if (rule === 'weekly') return addDays(d, 7 * steps);
+  if (rule && rule.startsWith('dow:')) {
+    const days = new Set(rule.slice(4).split(',').map(Number));
+    let cur = d, left = Math.abs(steps);
+    const dir = steps < 0 ? -1 : 1;
+    while (left > 0) { cur = addDays(cur, dir); if (days.has(new Date(cur + 'T12:00:00').getDay())) left--; }
+    return cur;
+  }
+  return rule === 'monthly' ? addMonths(d, steps) : addMonths(d, 12 * steps);
+};
 // rows of a series in a delete/edit scope: 'one' | 'following' | 'all'
 export const scopeRows = (siblings, idx, scope) =>
   siblings.filter((s) => scope === 'all' ? true : scope === 'following' ? s.series_index >= idx : s.series_index === idx);
@@ -108,16 +132,17 @@ export const scopeRows = (siblings, idx, scope) =>
 // dates before calling (tasks: repeating needs a due date).
 export async function applyRepeatChange({ table, row, newRule, oldRule, siblings, selfId, selfIndex, scope }) {
   const dateKey = table === 'events' ? 'event_date' : 'due_date';
-  const repeatN = (k) => (REPEAT_OPTIONS.find((o) => o.k === k) || { n: 1 }).n;
-  const repeatLabel = (k) => (REPEAT_OPTIONS.find((o) => o.k === k) || { label: 'once' }).label;
-  const seriesCols = state.hasSeries ? {} : null; // null => no series columns in DB
+  const repeatN = (k) => parseRepeat(k).n;
+  const repeatLabel = (k) => parseRepeat(k).label;
+  const hasCols = table === 'follow_ups' ? state.hasFuSeries : state.hasSeries;
+  const seriesCols = hasCols ? {} : null; // null => no series columns in DB
   const mkSeries = (sid) => Array.from({ length: repeatN(newRule) }, (_, i) => ({
     ...row,
     [dateKey]: shiftSeriesDate(newRule, row[dateKey], i),
     ...(seriesCols ? { series_id: sid, series_rule: newRule, series_index: i } : {}),
   }));
   const mkStandalone = () => ({ ...row, ...(seriesCols ? { series_id: null, series_rule: null, series_index: null } : {}) });
-  const newSid = () => (state.hasSeries ? crypto.randomUUID() : null);
+  const newSid = () => (hasCols ? crypto.randomUUID() : null);
 
   if (!oldRule) {
     // Standalone item now repeats: tag the edited row as index 0, insert the rest.

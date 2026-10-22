@@ -1,7 +1,7 @@
 // Follow-ups: person-centric nudges. Rows, bindings, editor, next-touch prompts.
 
-import { sb, q, loadPeople, withArchivedPerson } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, personPicker, bindPersonPickers } from './ui.js';
+import { sb, q, loadPeople, withArchivedPerson, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, personPicker, bindPersonPickers, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, parseRepeat } from './ui.js';
 import { esc, today, daysBetween, upcomingBirthdays } from './utils.js';
 import { state } from './config.js';
 
@@ -58,12 +58,16 @@ export const ntouch = (text) => `<div class="ntouch"><span class="nt-k">Next tou
 
 // ---------- edit follow-up (panel) ----------
 export async function editFollowup(fuId, rerender) {
-  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '');
+  const fields = 'id,title,detail,due_date,status,person_id,completed_at' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + (state.hasFuSeries ? ',series_id,series_rule,series_index' : '');
   const f = await q(sb.from('follow_ups').select(fields).eq('id', fuId).single());
   if (!f) return;
   const people = await withArchivedPerson(await loadPeople(), f.person_id);
   const cat = categoryField(f.category);
   const imp = importanceField(f.importance);
+  const rep = repeatField(f.series_rule || 'none');
+  const siblings = f.series_id ? await seriesSiblings('follow_ups', f.series_id) : [];
+  const isSeries = siblings.length > 1;
+  const scp = isSeries ? seriesScopeField(seriesNote(f.series_rule, f.series_index, siblings.length)) : null;
   openPanel();
   const who = people.find((p) => p.id === f.person_id);
   panelHead({ kicker: who ? who.name : 'Follow-up', title: 'Edit follow-up' });
@@ -76,15 +80,30 @@ export async function editFollowup(fuId, rerender) {
     ${cat.html}
     ${imp.html}
     <label class="lbl">Status</label><div class="pills" id="feStatus">${['open', 'parked', 'closed'].map((s) => `<button type="button" class="pill${f.status === s ? ' on' : ''}" data-s="${s}">${s}</button>`).join('')}</div>
+    ${scp ? scp.html : ''}
+    ${rep.html}
     <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button><button type="button" class="btn danger" id="fe_del" style="margin-left:auto">Delete</button></div></form>`;
   document.getElementById('fe_del').onclick = async (e) => {
     const b = e.currentTarget;
+    if (isSeries) {
+      openSeriesDeletePanel({
+        kicker: 'Delete follow-up', title: 'Delete repeating follow-up?',
+        note: `This is part of a ${parseRepeat(f.series_rule).label} series (${siblings.length} follow-ups).`,
+        onScope: async (scope) => {
+          if (!scope) return;
+          for (const s of scopeRows(siblings, f.series_index, scope)) await q(sb.from('follow_ups').delete().eq('id', s.id));
+          closePanel(); toast('Deleted'); rerender();
+        },
+      });
+      return;
+    }
     if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Sure?'; return; }
     b.disabled = true; await q(sb.from('follow_ups').delete().eq('id', fuId)); toast('Deleted'); closePanel(); rerender();
   };
   let status = f.status;
   root.querySelectorAll('#feStatus [data-s]').forEach((b) => (b.onclick = () => { status = b.dataset.s; root.querySelectorAll('#feStatus [data-s]').forEach((x) => x.classList.toggle('on', x === b)); }));
-  cat.bind(root); imp.bind(root); bindPersonPickers(root);
+  cat.bind(root); imp.bind(root); rep.bind(root); bindPersonPickers(root);
+  if (scp) scp.bind(root);
   document.getElementById('fe_cancel').onclick = () => dismissPanel();
   document.getElementById('fef').onsubmit = async (e) => {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
@@ -93,8 +112,28 @@ export async function editFollowup(fuId, rerender) {
     if (state.hasCategory) row.category = cat.get();
     if (state.hasImportance) row.importance = imp.get();
     if (status === 'closed' && f.status !== 'closed') row.completed_at = new Date().toISOString();
+    if (status === 'closed' && f.status === 'closed') row.completed_at = f.completed_at;
     if (status !== 'closed' && f.status === 'closed') row.completed_at = null;
-    try { await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓'); closePanel(); rerender(); }
+    const r = rep.get();
+    if (r.k !== 'none' && !row.due_date) { toast('Pick a due date for a repeating follow-up'); e.submitter && (e.submitter.disabled = false); return; }
+    try {
+      const oldRule = f.series_rule || null;
+      if (r.k === (oldRule || 'none')) {
+        if (!scp || scp.get() === 'one') {
+          await q(sb.from('follow_ups').update(row).eq('id', fuId)); toast('Saved ✓');
+        } else {
+          const targets = scopeRows(siblings, f.series_index, scp.get());
+          for (const s of targets) {
+            await q(sb.from('follow_ups').update({ ...row, due_date: row.due_date ? shiftSeriesDate(f.series_rule, row.due_date, s.series_index - f.series_index) : null }).eq('id', s.id));
+          }
+          toast(`Updated ${targets.length} follow-ups ✓`);
+        }
+      } else {
+        const msg = await applyRepeatChange({ table: 'follow_ups', row, newRule: r.k, oldRule, siblings, selfId: fuId, selfIndex: f.series_index, scope: scp ? scp.get() : 'one' });
+        toast(msg);
+      }
+      closePanel(); rerender();
+    }
     catch { e.submitter && (e.submitter.disabled = false); }
   };
   document.getElementById('fe_title').focus();

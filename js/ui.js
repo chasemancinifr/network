@@ -233,28 +233,51 @@ export function openSeriesDeletePanel({ kicker, title, note, onScope }) {
   $pBody.querySelectorAll('[data-ds]').forEach((b) => (b.onclick = () => onScope(b.dataset.ds)));
   document.getElementById('sdcancel').onclick = () => { closePanel(); onScope(null); };
 }
-export const seriesNote = (rule, idx, n) => `Repeating · ${rule[0].toUpperCase() + rule.slice(1)} · ${idx + 1} of ${n}`;
-// ---------- repeat selector (events + tasks) ----------
-// Materializes N dated instances (weekly x12, monthly x12, yearly x10).
-// Each instance is a real row, editable/deletable on its own.
-// Shown on create AND on edit — changing the rule in the edit form regenerates
-// the affected rows (see applyRepeatChange in db.js).
+export const seriesNote = (rule, idx, n) => `Repeating · ${parseRepeat(rule).label} · ${idx + 1} of ${n}`;
+// ---------- repeat selector (events + tasks + follow-ups) ----------
+// Materializes N dated instances (daily x30, weekly x12, monthly x12,
+// yearly x10, specific days x12 weeks). Each instance is a real row,
+// editable/deletable on its own. Shown on create AND on edit — changing
+// the rule in the edit form regenerates the affected rows (see
+// applyRepeatChange in db.js). A specific-days rule is stored as
+// 'dow:1,3,5' (JS weekday numbers, 0 = Sunday).
 export const REPEAT_OPTIONS = [
   { k: 'none', label: 'No repeat', n: 1 },
+  { k: 'daily', label: 'Daily', n: 30 },
   { k: 'weekly', label: 'Weekly', n: 12 },
   { k: 'monthly', label: 'Monthly', n: 12 },
   { k: 'yearly', label: 'Yearly', n: 10 },
 ];
-export function repeatField(selected = 'none') {
-  let sel = REPEAT_OPTIONS.some((o) => o.k === selected) ? selected : 'none';
+export const DOW_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const DOW_SHORT = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+export function parseRepeat(k) {
+  if (k && k.startsWith('dow:')) {
+    const days = [...new Set(k.slice(4).split(',').map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort((a, b) => a - b);
+    return { k: days.length ? `dow:${days.join(',')}` : 'none', kind: 'dow', days, n: Math.max(days.length, 1) * 12, label: days.length ? days.map((d) => DOW_NAMES[d]).join(' · ') : 'Specific days' };
+  }
+  const o = REPEAT_OPTIONS.find((x) => x.k === k) || REPEAT_OPTIONS[0];
+  return { ...o, kind: o.k, days: [] };
+}
+export function repeatField(selected = 'none', anchorDow = new Date().getDay()) {
+  const parsed = parseRepeat(selected);
+  let sel = parsed.kind === 'dow' ? 'dow' : (REPEAT_OPTIONS.some((o) => o.k === selected) ? selected : 'none');
+  const days = new Set(parsed.kind === 'dow' ? parsed.days : [anchorDow]);
+  const pills = [...REPEAT_OPTIONS, { k: 'dow', label: 'Specific days' }];
   return {
-    html: `<label class="lbl">Repeat</label><div class="pills" data-repeatpills>${REPEAT_OPTIONS.map((o) => `<button type="button" class="pill${sel === o.k ? ' on' : ''}" data-r="${o.k}" title="${o.k === 'none' ? 'Just this once' : `${o.label} · creates ${o.n}`}">${o.label}</button>`).join('')}</div>`,
+    html: `<label class="lbl">Repeat</label><div class="pills" data-repeatpills>${pills.map((o) => `<button type="button" class="pill${sel === o.k ? ' on' : ''}" data-r="${o.k}">${o.label}</button>`).join('')}</div><div class="pills" data-dowpills style="margin-top:8px;${sel === 'dow' ? '' : 'display:none'}">${DOW_SHORT.map((l, i) => `<button type="button" class="pill${days.has(i) ? ' on' : ''}" data-d="${i}">${l}</button>`).join('')}</div>`,
     bind(root) {
+      const dowRow = root.querySelector('[data-dowpills]');
       root.querySelectorAll('[data-repeatpills] [data-r]').forEach((b) => (b.onclick = () => {
         sel = b.dataset.r;
         root.querySelectorAll('[data-repeatpills] [data-r]').forEach((x) => x.classList.toggle('on', x === b));
+        if (dowRow) dowRow.style.display = sel === 'dow' ? '' : 'none';
+      }));
+      root.querySelectorAll('[data-dowpills] [data-d]').forEach((b) => (b.onclick = () => {
+        const d = Number(b.dataset.d);
+        if (days.has(d)) days.delete(d); else days.add(d);
+        b.classList.toggle('on', days.has(d));
       }));
     },
-    get: () => REPEAT_OPTIONS.find((o) => o.k === sel),
+    get: () => (sel === 'dow' ? parseRepeat(days.size ? `dow:${[...days].sort((a, b) => a - b).join(',')}` : 'none') : parseRepeat(sel)),
   };
 }

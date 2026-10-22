@@ -2,7 +2,7 @@
 // link a person and may carry a due date — neither is required.
 
 import { sb, q, loadPeople, withArchivedPerson, seriesSiblings, scopeRows, shiftSeriesDate, applyRepeatChange } from './db.js';
-import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, personPicker, bindPersonPickers } from './ui.js';
+import { $pBody, $view, openPanel, panelHead, closePanel, dismissPanel, st, monoDate, toast, categoryField, catBadge, importanceField, impBadge, repeatField, seriesScopeField, seriesNote, openSeriesDeletePanel, personPicker, bindPersonPickers, parseRepeat } from './ui.js';
 import { esc, today } from './utils.js';
 import { state } from './config.js';
 
@@ -106,7 +106,7 @@ export async function editTask(taskId, rerender) {
     if (isSeries) {
       openSeriesDeletePanel({
         kicker: 'Delete task', title: 'Delete repeating task?',
-        note: `This is part of a ${t.series_rule} series (${siblings.length} tasks).`,
+        note: `This is part of a ${parseRepeat(t.series_rule).label} series (${siblings.length} tasks).`,
         onScope: async (scope) => {
           if (!scope) return;
           for (const s of scopeRows(siblings, t.series_index, scope)) await q(sb.from('tasks').delete().eq('id', s.id));
