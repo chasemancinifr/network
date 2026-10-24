@@ -22,14 +22,14 @@ function panelRoute(h) {
 }
 export async function route() {
   if (!state.session) { closePanel(); state.baseRendered = false; return renderLogin(); }
-  const h = location.hash || '#/today';
+  const h = location.hash || '#/dashboard';
   const pr = panelRoute(h);
   try {
     if (pr) {
       if (!state.baseRendered) { await BASE[state.base](); state.baseRendered = true; }
       openPanel(); await pr();
     } else {
-      const next = BASE[h] ? h : '#/today';
+      const next = BASE[h] ? h : '#/dashboard';
       if (next !== state.base) window.scrollTo(0, 0);
       state.base = next; closePanel();
       await BASE[next](); state.baseRendered = true;
