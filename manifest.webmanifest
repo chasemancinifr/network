@@ -2,7 +2,7 @@
   "name": "Network",
   "short_name": "Network",
   "description": "Chase's personal relationship network",
-  "start_url": "./#/today",
+  "start_url": "./#/dashboard",
   "scope": "./",
   "display": "standalone",
   "background_color": "#0f1115",
