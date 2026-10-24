@@ -1,7 +1,7 @@
 // Router: hash routes → pages or the slide-over panel, plus boot.
 
 import { sb, probeActionCategory, probeActionImportance, probeSeries, probeEventPeople, probeFuSeries } from './db.js';
-import { probeAssistant } from './assistant.js';
+import { probeAssistant, renderSuggestion } from './assistant.js';
 import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
@@ -17,6 +17,7 @@ function panelRoute(h) {
   let m;
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})\/edit$/))) return () => renderEdit(m[1]);
   if ((m = h.match(/^#\/p\/([0-9a-f-]{36})$/))) return () => renderPerson(m[1]);
+  if ((m = h.match(/^#\/s\/([0-9a-f-]{36})$/))) return () => renderSuggestion(m[1]);
   if (h === '#/new') return () => renderEdit(null);
   if (h === '#/password') return () => renderPassword();
   return null;

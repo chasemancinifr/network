@@ -76,7 +76,7 @@ export async function openTaskForm(slot, { personId = null, date = '', people, o
 
 // ---------- edit task (panel) ----------
 export async function editTask(taskId, rerender) {
-  const fields = 'id,title,detail,due_date,status,person_id' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + (state.hasSeries ? ',series_id,series_rule,series_index' : '');
+  const fields = 'id,title,detail,due_date,status,person_id,completed_at' + (state.hasCategory ? ',category' : '') + (state.hasImportance ? ',importance' : '') + (state.hasSeries ? ',series_id,series_rule,series_index' : '');
   const t = await q(sb.from('tasks').select(fields).eq('id', taskId).single());
   if (!t) return;
   const people = await withArchivedPerson(await loadPeople(), t.person_id);
@@ -99,8 +99,26 @@ export async function editTask(taskId, rerender) {
     ${imp.html}
     ${scp ? scp.html : ''}
     ${rep.html}
-    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="te_cancel">Cancel</button><button type="button" class="btn" id="te_conv">Make follow-up</button><button type="button" class="btn danger" id="te_del" style="margin-left:auto">Delete</button></div></form>`;
   document.getElementById('te_cancel').onclick = () => dismissPanel();
+  document.getElementById('te_conv').onclick = async (e) => {
+    const b = e.currentTarget;
+    const pid = document.getElementById('te_person').value || null;
+    if (!pid) { toast('Follow-ups need a person — pick one above first', true); return; }
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Replace with a follow-up?'; return; }
+    b.disabled = true;
+    const row = { title: document.getElementById('te_title').value.trim(), detail: document.getElementById('te_detail').value.trim() || null,
+      due_date: document.getElementById('te_due').value || null, person_id: pid,
+      status: t.status === 'done' ? 'closed' : 'open' };
+    if (state.hasCategory) row.category = cat.get();
+    if (state.hasImportance) row.importance = imp.get();
+    if (row.status === 'closed') row.completed_at = t.completed_at || new Date().toISOString();
+    try {
+      await q(sb.from('follow_ups').insert(row));
+      await q(sb.from('tasks').delete().eq('id', taskId));
+      toast('Now a follow-up ✓'); closePanel(); rerender();
+    } catch { b.disabled = false; b.textContent = 'Make follow-up'; delete b.dataset.sure; toast('Conversion failed', true); }
+  };
   document.getElementById('te_del').onclick = async (e) => {
     const b = e.currentTarget;
     if (isSeries) {

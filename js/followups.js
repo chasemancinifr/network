@@ -82,7 +82,23 @@ export async function editFollowup(fuId, rerender) {
     <label class="lbl">Status</label><div class="pills" id="feStatus">${['open', 'parked', 'closed'].map((s) => `<button type="button" class="pill${f.status === s ? ' on' : ''}" data-s="${s}">${s}</button>`).join('')}</div>
     ${scp ? scp.html : ''}
     ${rep.html}
-    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button><button type="button" class="btn danger" id="fe_del" style="margin-left:auto">Delete</button></div></form>`;
+    <div class="actions" style="margin-top:16px"><button class="btn primary">Save</button><button type="button" class="btn" id="fe_cancel">Cancel</button><button type="button" class="btn" id="fe_conv">Make task</button><button type="button" class="btn danger" id="fe_del" style="margin-left:auto">Delete</button></div></form>`;
+  document.getElementById('fe_conv').onclick = async (e) => {
+    const b = e.currentTarget;
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Replace with a task?'; return; }
+    b.disabled = true;
+    const row = { title: document.getElementById('fe_title').value.trim(), detail: document.getElementById('fe_detail').value.trim() || null,
+      due_date: document.getElementById('fe_due').value || null, person_id: document.getElementById('fe_person').value || null,
+      status: status === 'closed' ? 'done' : 'open' };
+    if (state.hasCategory) row.category = cat.get();
+    if (state.hasImportance) row.importance = imp.get();
+    if (row.status === 'done') row.completed_at = f.completed_at || new Date().toISOString();
+    try {
+      await q(sb.from('tasks').insert(row));
+      await q(sb.from('follow_ups').delete().eq('id', fuId));
+      toast('Now a task ✓'); closePanel(); rerender();
+    } catch { b.disabled = false; b.textContent = 'Make task'; delete b.dataset.sure; toast('Conversion failed', true); }
+  };
   document.getElementById('fe_del').onclick = async (e) => {
     const b = e.currentTarget;
     if (isSeries) {
