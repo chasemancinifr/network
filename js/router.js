@@ -1,6 +1,7 @@
 // Router: hash routes → pages or the slide-over panel, plus boot.
 
 import { sb, probeActionCategory, probeActionImportance, probeSeries, probeEventPeople, probeFuSeries } from './db.js';
+import { probeAssistant } from './assistant.js';
 import { $view, $pBody, $add, setHead, closePanel, openPanel } from './ui.js';
 import { esc } from './utils.js';
 import { state } from './config.js';
@@ -72,7 +73,7 @@ export function boot() {
   window.addEventListener('hashchange', closeMore);
   sb.auth.onAuthStateChange((_evt, session) => {
     const was = !!state.session; state.session = session;
-    if (!!session !== was) { state.people = null; (session ? pullSettings() : Promise.resolve()).then(() => probeActionCategory()).then(() => probeActionImportance()).then(() => probeSeries()).then(() => probeEventPeople()).then(() => probeFuSeries()).then(() => route()); }
+    if (!!session !== was) { state.people = null; (session ? pullSettings() : Promise.resolve()).then(() => probeActionCategory()).then(() => probeActionImportance()).then(() => probeSeries()).then(() => probeEventPeople()).then(() => probeFuSeries()).then(() => probeAssistant()).then(() => route()); }
   });
 
   let bootDone = false;
@@ -89,6 +90,7 @@ export function boot() {
       await probeSeries();
       await probeEventPeople();
       await probeFuSeries();
+      await probeAssistant();
       await route();
     } catch (e) {
       console.error('[boot]', e);

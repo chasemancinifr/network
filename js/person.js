@@ -8,15 +8,17 @@ import { fuItem, bindFollowups } from './followups.js';
 import { taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { editInteraction } from './pages.js';
+import { personAssistant, signalsBlock, sugItem, bindAssistant, socialLinks, SOCIAL_KEYS } from './assistant.js';
 
 // ---------- person (panel) ----------
 export async function renderPerson(id) {
-  const [p, fus, ints, pevs, ptasks] = await Promise.all([
+  const [p, fus, ints, pevs, ptasks, pa] = await Promise.all([
     q(sb.from('people').select('*').eq('id', id).single()),
     q(sb.from('follow_ups').select('*').eq('person_id', id).order('status').order('created_at', { ascending: false })),
     q(sb.from('interactions').select('*').eq('person_id', id).order('happened_at', { ascending: false }).order('created_at', { ascending: false })),
     q(sb.from('events').select('id,title,event_date,event_time,notes,person_id').eq('person_id', id).gte('event_date', today()).order('event_date').order('event_time')),
     personTasks(id),
+    personAssistant(id),
   ]);
   // events where this person is a co-attendee (not the primary) count too
   let allEvs = pevs;
@@ -39,11 +41,12 @@ export async function renderPerson(id) {
   const myActs = buildActionMap(open, ptasks)[id];
   const facts = [
     ['Role', [p.role, p.dept, p.org].filter(Boolean).join(' · ')], ['Relationship', p.relationship],
-    ['Circles', (p.circles || []).join(', ')], ['Birthday', bday(p)],
+    ['Circles', (p.circles || []).join(', ')], ['Interests', (p.interests || []).join(', ')], ['Birthday', bday(p)],
     ['Last contact', p.last_contact ? `${fmtDate(p.last_contact)} (${ago(p.last_contact)})` : ''],
     ['Cadence', p.cadence_days ? `every ${p.cadence_days} days${d ? ' · ' + d.label : ''}` : ''],
     ['Phone', p.phone ? `<a href="tel:${esc(p.phone)}">${esc(p.phone)}</a>` : '', true],
     ['Email', p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : '', true],
+    ['Socials', socialLinks(p.socials), true],
     ['Location', p.location], ['How met', p.how_met], ['Also', (p.aliases || []).join(', ')], ['Tenure', p.tenure === 'vet' ? '5+ years' : p.tenure],
   ].filter((f) => f[1]);
   const root = $pBody;
@@ -66,6 +69,8 @@ export async function renderPerson(id) {
     </div>
     <div id="formSlot"></div>
 
+    ${pa.sugs.length ? `${sec('Assistant', pa.sugs.length)}<div class="card"><ul class="list">${pa.sugs.map(sugItem).join('')}</ul></div>` : ''}
+
     ${sec('Follow-ups', open.length + parked.length)}
     <div class="card">${open.length || parked.length ? `<ul class="list">${[...open, ...parked].map((f) => fuItem({ ...f, person: null })).join('')}</ul>` : '<div class="empty">None open.</div>'}
       ${closed.length ? `<details class="more"><summary>${closed.length} done</summary><ul class="list">${closed.map((f) => fuItem({ ...f, person: null })).join('')}</ul></details>` : ''}</div>
@@ -75,6 +80,8 @@ export async function renderPerson(id) {
 
     ${sec('Upcoming events', allEvs.length)}
     ${evList(allEvs, 'None scheduled.', true)}
+
+    ${signalsBlock(pa.signals)}
 
     ${sec('History', ints.length)}
     <div class="card">${ints.length ? `<ul class="list">${ints.map((i) => `<li class="fu"><div class="main"><span class="t">${esc(i.summary)}</span>
@@ -86,6 +93,7 @@ export async function renderPerson(id) {
 
   bindFollowups(() => renderPerson(id), root);
   bindTasks(() => renderPerson(id), root);
+  bindAssistant(pa.sugs, () => renderPerson(id), root);
   root.querySelectorAll('[data-int-edit]').forEach((b) => (b.onclick = () => editInteraction(b.dataset.intEdit, () => renderPerson(id))));
   const slot = document.getElementById('formSlot');
   bindEvents(() => renderPerson(id), root, (eid) => editEvent(eid, slot, () => renderPerson(id)));
@@ -165,6 +173,9 @@ export async function renderEdit(id) {
       <input class="field" id="e_bd" placeholder="Day" inputmode="numeric" value="${esc(p.birth_day ?? '')}">
       <input class="field" id="e_by" placeholder="Year" inputmode="numeric" value="${esc(p.birth_year ?? '')}"></div>
     ${inp('how_met', 'How you met')}
+    <label class="lbl" for="e_interests">Interests · comma separated</label><input class="field" id="e_interests" value="${esc((p.interests || []).join(', '))}" placeholder="e.g. cars, volleyball, Yankees, real estate">
+    <label class="lbl">Socials · handle or link</label>
+    <div class="grid2">${SOCIAL_KEYS.map((k) => `<div><input class="field" id="e_so_${k}" placeholder="${k[0].toUpperCase() + k.slice(1)}" value="${esc((p.socials || {})[k] ?? '')}" autocomplete="off" autocapitalize="off"></div>`).join('')}</div>
     <label class="lbl" for="e_notes">Notes</label><textarea class="field" id="e_notes" style="min-height:${id ? 220 : 120}px">${esc(p.notes ?? '')}</textarea>
     <div class="actions" style="margin-top:16px"><button class="btn primary">${id ? 'Save' : 'Add person'}</button>
       ${id ? '<button type="button" class="btn danger" id="arch" style="margin-left:auto">Archive</button>' : ''}</div>
@@ -189,6 +200,14 @@ export async function renderEdit(id) {
     const row = { name, tier: tier || null, circles: [...sel], relationship: titleCase(v('relationship')) || null, role: v('role'), dept: v('dept'), org: v('org'),
       phone: v('phone'), email: v('email'), location: v('location'), cadence_days: cad, how_met: v('how_met'), notes: v('notes'),
       birth_month: bm, birth_day: bd, birth_year: by };
+    if (state.hasAssistant) {
+      const seen = new Set();
+      row.interests = document.getElementById('e_interests').value.split(',').map((x) => x.trim()).filter((x) => x && !seen.has(x.toLowerCase()) && seen.add(x.toLowerCase()));
+      // keep any socials keys the form doesn't show (e.g. written by Muse)
+      const so = { ...(p.socials || {}) };
+      SOCIAL_KEYS.forEach((k) => { const val = document.getElementById('e_so_' + k).value.trim(); if (val) so[k] = val; else delete so[k]; });
+      row.socials = so;
+    }
     e.submitter && (e.submitter.disabled = true);
     try {
       const saved = id ? await q(sb.from('people').update(row).eq('id', id).select('id').single())

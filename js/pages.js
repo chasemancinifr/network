@@ -1,6 +1,7 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
 import { sb, q, loadPeople, withArchivedPerson, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
+import { loadSuggestions, assistantBlock, bindAssistant } from './assistant.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank, toast, $pBody, personPicker, bindPersonPickers } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES, isFamilyRel } from './config.js';
@@ -22,9 +23,9 @@ const relLabel = (r) => r || 'Uncategorized';
 export async function renderDashboard() {
   setHead({ kicker: 'Network overview', title: 'Dashboard', tab: 'dashboard', add: true });
   const t = today();
-  const [people, intRows, fus, tasks, evs] = await Promise.all([loadPeople(),
+  const [people, intRows, fus, tasks, evs, sugs] = await Promise.all([loadPeople(),
     q(sb.from('interactions').select('id,happened_at').gte('happened_at', addDays(t, -63)).limit(2000)),
-    openFollowups(), openTasksSoft(), loadEvents()]);
+    openFollowups(), openTasksSoft(), loadEvents(), loadSuggestions()]);
   const streak = streakOf(intRows, t);
   const ints7 = intRows.filter((r) => r.happened_at && r.happened_at >= addDays(t, -6)).length;
   const newMonth = people.filter((p) => p.created_at && p.created_at.slice(0, 7) === t.slice(0, 7)).length;
@@ -128,6 +129,7 @@ export async function renderDashboard() {
     ${insights.length ? `<div class="blk">${insightsHtml}</div>` : ''}
     </div>
     <div class="dash" style="margin-top:12px"><div class="dash-main">
+      ${assistantBlock(sugs)}
       ${sec('Needs attention', attentionAll.length, '', attentionAll.length ? 'amber' : '')}
       ${stale.length ? `<ul class="list card">${stale.slice(0, 8).map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
         <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.${attentionAll.length > 8 ? ` <a href="#/overdue">See all ${attentionAll.length} on the Overdue page</a>` : ''}</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
@@ -145,6 +147,7 @@ export async function renderDashboard() {
     <div class="linkrow"><a href="#/password">Set password</a><a href="#" id="signout">Sign out</a></div>`;
   bindFollowups(renderDashboard);
   bindTasks(renderDashboard);
+  bindAssistant(sugs, renderDashboard, $view);
   bindEvents(renderDashboard, $view, (id) => editEvent(id, document.getElementById('evSlot'), renderDashboard));
   // network mix drill-in: tap a legend item to open People filtered to it
   $view.querySelectorAll('[data-ins]').forEach((b) => (b.onclick = () => {

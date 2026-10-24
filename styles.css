@@ -454,3 +454,12 @@ li.fu .main{padding-right:86px}
   .cal-wrap { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 0 28px; align-items: start; }
   .cal-wrap .cal-col { min-width: 0; }
 }
+
+/* ---------- assistant (Oct 23 2026) ---------- */
+.sug .sug-why { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.sug .sug-msg { box-sizing: border-box; width: 100%; margin-top: 2px; padding: 8px 10px; border: 1px solid var(--line); border-left: 2px solid var(--amber); border-radius: 8px;
+  background: var(--surface-2); font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.sug .sug-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; }
+.sug .sug-btns .mini { margin-left: auto; }
+a.btn { text-decoration: none; }
+li.fu.sug .main { padding-right: 0; }
