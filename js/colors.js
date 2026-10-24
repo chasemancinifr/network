@@ -22,6 +22,19 @@ const REL_VARS = { Professional: '--rel-professional', Friend: '--rel-friend', F
 const relVar = (k) => REL_VARS[k] || (isFamilyRel(k) ? '--rel-family' : '--rel-other');
 export const relColor = (k) => read().rel?.[k] || `var(${relVar(k)})`;
 export const relDefaultHex = (k) => cssVarHex(relVar(k), '#8d8578');
+// concrete hex for a relationship: the saved override when it is a hex,
+// else the theme default the Settings swatches use
+const HEXRE = /^#[0-9a-f]{6}$/i;
+export const relHex = (k) => { const o = read().rel?.[k]; return HEXRE.test(o || '') ? o : relDefaultHex(k); };
+// scale a hex toward black (f = fraction kept) for dark tints
+export const darken = (hex, f = 0.42) => {
+  const n = parseInt(String(hex).replace('#', ''), 16);
+  if (Number.isNaN(n)) return '#3a3a3a';
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v * f))).toString(16).padStart(2, '0');
+  return `#${c((n >> 16) & 255)}${c((n >> 8) & 255)}${c(n & 255)}`;
+};
+// initials avatar: dark tint of the relationship color, full color as the ring
+export const avStyle = (k) => { const h = relHex(k); return `background:${darken(h)};border-color:${h};color:#f7f1e6`; };
 
 // ---------- tiers ----------
 export const TIER_KEYS = ['A', 'B', 'C', 'D'];

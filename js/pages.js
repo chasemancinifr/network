@@ -12,7 +12,7 @@ import { taskItem, taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
 import { newFollowup } from './new.js';
 import { pushSettings } from './settings.js';
-import { relColor, tierColor, circleColor, relDefaultHex, tierDefaultHex, REL_KEYS, TIER_KEYS, CIRCLE_PALETTE, getColorOverrides, setColorOverride, resetColorOverrides } from './colors.js';
+import { relColor, tierColor, circleColor, relDefaultHex, tierDefaultHex, REL_KEYS, TIER_KEYS, CIRCLE_PALETTE, getColorOverrides, setColorOverride, resetColorOverrides, avStyle } from './colors.js';
 
 // ---------- dashboard = the big picture ----------
 // relationship value as-is (Title Case free text); '' for blank. Custom values
@@ -241,7 +241,7 @@ export async function renderOverdue() {
     return { circles: [], org: '', role: '', ...fp, name: (f.person && f.person.name) || fp.name };
   };
   const cadRow = (x) => `<li><a class="row" href="#/p/${x.p.id}">
-      <span class="av">${esc(initials(x.p.name))}</span>
+      <span class="av" style="${avStyle(x.p.relationship)}">${esc(initials(x.p.name))}</span>
       <span class="main"><span class="name">${esc(x.p.name)}</span><span class="meta">${esc(personMeta(x.p))}</span></span>
       ${st('red', x.d.label)}</a>
       ${ntouch(nextTouch(x.p, lastById[x.p.id]))}</li>`;

@@ -4,6 +4,7 @@ import { sb, q, loadPeople, personTasks, buildActionMap, attachAttendees } from 
 import { $pBody, panelHead, st, monoDate, initials, personStatus, sec, toast, categoryField, importanceField, actDot } from './ui.js';
 import { today, fmtDate, ago, dayOf, bday, dueInfo, md, esc, titleCase } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_ROLES } from './config.js';
+import { avStyle } from './colors.js';
 import { fuItem, bindFollowups } from './followups.js';
 import { taskList, bindTasks, openTaskForm } from './tasks.js';
 import { evList, bindEvents, openEventForm, editEvent } from './events.js';
@@ -53,7 +54,7 @@ export async function renderPerson(id) {
   const last = ints[0];
   const lastD = last && last.happened_at ? dayOf(last.happened_at) : null;
   root.innerHTML = `
-    <div class="p-hero"><span class="av lg">${esc(initials(p.name))}</span>
+    <div class="p-hero"><span class="av lg" style="${avStyle(p.relationship)}">${esc(initials(p.name))}</span>
       <div class="main"><div class="sub">${esc(p.role || p.relationship || '')}${actDot(myActs)}</div><div style="margin-top:4px">${personStatus(p) || st('ring', p.last_contact ? `Last contact ${ago(p.last_contact)}` : 'No cadence')}</div></div></div>
     ${last ? `<div class="card recap">
       <div class="recap-head"><span>Last interaction</span><span class="mono">${lastD ? `${monoDate(lastD)} · ${ago(lastD)}` : 'Undated'}</span></div>

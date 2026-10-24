@@ -2,6 +2,7 @@
 // Presentation only — no data fetching here.
 
 import { state, ACTION_CATEGORIES, ACTION_IMPORTANCE } from './config.js';
+import { avStyle } from './colors.js';
 import { esc, fmtDate, ago, dueInfo, today } from './utils.js';
 
 export const $view = document.getElementById('view');
@@ -40,7 +41,7 @@ export function personMeta(p) {
 }
 export const personRow = (p, extra = '', act = '') => `
   <li><a class="row" href="#/p/${p.id}">
-    <span class="av">${esc(initials(p.name))}</span>
+    <span class="av" style="${avStyle(p.relationship)}">${esc(initials(p.name))}</span>
     <span class="main"><span class="name">${esc(p.name)}${act}</span><span class="meta">${esc(personMeta(p))}</span></span>
     ${extra}</a></li>`;
 export function kickerDate() {
