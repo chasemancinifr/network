@@ -54,6 +54,12 @@ function bootFail() {
 }
 
 export function boot() {
+  // Home-screen icons installed before v57 saved start_url "./#/today", and iOS
+  // never re-reads the manifest after install. A cold launch from that icon
+  // lands on #/today, so send it to the Dashboard. Only on boot, only when
+  // running as the installed app, so tapping Today later still works.
+  const standalone = window.navigator.standalone === true || (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  if (standalone && location.hash === '#/today') history.replaceState(null, '', '#/dashboard');
   window.addEventListener('hashchange', route);
   $add.onclick = () => openNewMenu();
   // theme button (ui.js) saves locally first; this then syncs it to the other devices
