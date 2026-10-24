@@ -43,7 +43,7 @@ export const state = {
   intKind: 'all',
   intQ: '',
   intWeek: 0,
-  base: '#/today',
+  base: '#/dashboard',
   baseRendered: false,
   cal: null,
   recentActor: 'all', // Recent tab actor filter: all | Chase | Muse | Claude

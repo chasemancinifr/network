@@ -83,6 +83,6 @@ export function renderPassword() {
     e.preventDefault(); e.submitter && (e.submitter.disabled = true);
     const { error } = await sb.auth.updateUser({ password: document.getElementById('np').value });
     if (error) { toast(error.message, true); e.submitter && (e.submitter.disabled = false); return; }
-    toast('Password saved ✓'); location.hash = '#/today';
+    toast('Password saved ✓'); location.hash = '#/dashboard';
   };
 }
