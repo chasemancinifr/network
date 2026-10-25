@@ -94,6 +94,9 @@ Rules for Muse:
 | priority | 1 high · 2 normal · 3 low |
 | status | new / done / dismissed (the app sets done/dismissed + acted_at) |
 | dedupe_key | unique; e.g. `birthday:<person_id>:2026`, `signal:<signal_id>`, `invite:<event_id>:<person_id>` |
+| url | event page link, for events found outside the app (http/https only) |
+| event_time | only when the event page states it |
+| location | venue, town |
 
 Daily-run rules:
 - At most ~8 new suggestions a day; quality over volume.
@@ -104,3 +107,25 @@ Daily-run rules:
   never "it's been a while" — he sees them daily.
 - "Who would be into what": for an upcoming event, match people's `interests`
   and circles to the event and suggest invites, with the match spelled out in `reason`.
+
+## Events from outside the app (Chase, Oct 24 2026)
+Chase wants the assistant to recommend real upcoming events, not just ones
+already in the app, plus who to invite based on interests or history.
+- The daily Claude run searches the web (allevents.in, Eventbrite, Times
+  Union / Saratoga Living / Albany.org calendars, venue and team sites,
+  race calendars, Meetup, track sites) for events 2–21 days out within
+  ~45 min of Waterford, driven by Chase's own interests and the network's
+  real interests. Max 3 event suggestions a run.
+- Every event is verified on its own page (a 2026 date inside the window,
+  plus the place). No clear date means it's skipped.
+- Stored as `kind = invite` with `url`, `for_date`, `event_time`,
+  `location`; `person_id` = the best match (others named in `reason`), or
+  null when it's an idea for Chase himself (the app labels it "Event").
+  dedupe_key `extevent:<yyyy-mm-dd>:<slug>`.
+- **Facebook:** the cloud run can't log in, so Chase's Facebook events come
+  through **Muse** (extension 6): Muse writes them into `events` (with
+  `event_people` for friends going/interested), and the daily run then
+  suggests who else to invite.
+- The app's **Add to calendar** button creates the `events` row (title,
+  date, time, notes = place + link + why), adds the matched person to
+  `event_people`, and sets the suggestion's `event_id`.
