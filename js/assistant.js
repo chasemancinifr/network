@@ -10,7 +10,7 @@
 
 import { sb, q, loadPeople, withArchivedPerson, shiftSeriesDate } from './db.js';
 import { st, toast, monoDate, sec, $pBody, openPanel, panelHead, dismissPanel, categoryField, importanceField, repeatField, personPicker, bindPersonPickers } from './ui.js';
-import { esc, today } from './utils.js';
+import { esc, today, fmtTime } from './utils.js';
 import { state } from './config.js';
 
 export async function probeAssistant() {
@@ -34,7 +34,7 @@ const SENDABLE = new Set(['message', 'compliment', 'congrats', 'invite', 'birthd
 export async function loadSuggestions() {
   if (!state.hasAssistant) return [];
   const { data, error } = await sb.from('suggestions')
-    .select('id,kind,title,message,reason,for_date,priority,status,created_by,person_id,person:people(id,name,phone),signal:signals(source,url)')
+    .select('id,kind,title,message,reason,for_date,priority,status,url,event_time,location,event_id,created_by,person_id,person:people(id,name,phone),signal:signals(source,url)')
     .eq('status', 'new')
     .order('priority', { ascending: true })
     .order('for_date', { ascending: true, nullsFirst: false })
@@ -58,20 +58,47 @@ function whenLabel(d) {
   return st('gray', monoDate(d));
 }
 
+// ---------- events found by the daily run (url / event_time / location, Oct 24 2026) ----------
+// An invite with no person is an event idea for Chase himself.
+const kindLabel = (s) => (s.kind === 'invite' && !s.person_id ? 'Event' : SUG_KINDS[s.kind] || 'Idea');
+const canCalendar = (s) => s.kind === 'invite' && !s.event_id && !!s.for_date;
+function evBits(s) {
+  const u = safeUrl(s.url);
+  return {
+    time: s.event_time ? `<span>${esc(fmtTime(s.event_time))}</span>` : '',
+    link: u ? `<a href="${esc(u)}" target="_blank" rel="noopener">Event page</a>` : '',
+    where: s.location ? `<span class="sug-why">Where: ${esc(s.location)}</span>` : '',
+  };
+}
+// Put the event on the Network calendar (and the matched person on it), then
+// tie the suggestion to that event so the button goes away. The invite itself
+// is still Chase's to send, so the suggestion stays open.
+export async function addSuggestionToCalendar(s) {
+  const notes = [s.location, safeUrl(s.url), s.reason ? `Why: ${s.reason}` : ''].filter(Boolean).join('\n');
+  const ev = await q(sb.from('events').insert({ title: s.title, event_date: s.for_date, event_time: s.event_time || null,
+    notes: notes || null, person_id: s.person_id || null }).select('id').single());
+  if (s.person_id && state.hasEventPeople) await q(sb.from('event_people').insert({ event_id: ev.id, person_id: s.person_id }));
+  await q(sb.from('suggestions').update({ event_id: ev.id }).eq('id', s.id));
+  return ev.id;
+}
+
 export function sugItem(s) {
   const who = s.person ? `<a href="#/p/${s.person.id}">${esc(s.person.name)}</a>` : '';
   const src = s.signal && safeUrl(s.signal.url) ? `<a href="${esc(safeUrl(s.signal.url))}" target="_blank" rel="noopener">${esc(s.signal.source)} post</a>` : '';
   const text = s.message ? `<div class="sug-msg">${esc(s.message)}</div>` : '';
   const canText = s.message && s.person && s.person.phone;
+  const ev = evBits(s);
   const btns = [
     canText ? `<a class="btn small primary" href="${smsHref(s.person.phone, s.message)}" data-sug-text="${s.id}">Text</a>` : '',
     s.message ? `<button class="btn small" data-sug-copy="${s.id}">Copy</button>` : '',
+    canCalendar(s) ? `<button class="btn small" data-sug-cal="${s.id}">Add to calendar</button>` : '',
     `<button class="btn small" data-sug-done="${s.id}">${SENDABLE.has(s.kind) && s.person ? 'Sent ✓' : 'Done ✓'}</button>`,
     `<button class="mini" data-sug-dismiss="${s.id}">Dismiss</button>`,
   ].join('');
   return `<li class="fu sug" data-sug="${s.id}"><div class="main">
     <span class="t"><a href="#/s/${s.id}">${esc(s.title)}</a></span>
-    <span class="meta"><span class="typebadge">${esc(SUG_KINDS[s.kind] || 'Idea')}</span>${whenLabel(s.for_date)}${who ? `<span>${who}</span>` : ''}${src ? `<span>${src}</span>` : ''}</span>
+    <span class="meta"><span class="typebadge">${esc(kindLabel(s))}</span>${whenLabel(s.for_date)}${ev.time}${who ? `<span>${who}</span>` : ''}${src ? `<span>${src}</span>` : ''}${ev.link}</span>
+    ${ev.where}
     ${s.reason ? `<span class="sug-why">${esc(s.reason)}</span>` : ''}
     ${text}
     <div class="sug-btns">${btns}</div>
@@ -128,6 +155,10 @@ export function bindAssistant(rows, rerender, root) {
     b.disabled = true;
     try { await close(b.dataset.sugDismiss, 'dismissed'); toast('Dismissed'); rerender(); } catch { b.disabled = false; }
   }));
+  root.querySelectorAll('[data-sug-cal]').forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    try { await addSuggestionToCalendar(byId[b.dataset.sugCal]); toast('On your calendar ✓'); rerender(); } catch { b.disabled = false; }
+  }));
 }
 
 // ---------- suggestion panel: tap in, edit, schedule as task / follow-up ----------
@@ -137,7 +168,7 @@ export async function renderSuggestion(id) {
   let s;
   try {
     s = await q(sb.from('suggestions')
-      .select('id,kind,title,message,reason,for_date,priority,status,person_id,person:people(id,name,phone),signal:signals(source,url)')
+      .select('id,kind,title,message,reason,for_date,priority,status,url,event_time,location,event_id,person_id,person:people(id,name,phone),signal:signals(source,url)')
       .eq('id', id).single());
   } catch { $pBody.innerHTML = '<div class="empty">That suggestion is gone.</div>'; return; }
   if (!s) return;
@@ -149,6 +180,8 @@ export async function renderSuggestion(id) {
   const rep = repeatField();
   const src = s.signal && safeUrl(s.signal.url) ? `<div class="sug-why">Source: <a href="${esc(safeUrl(s.signal.url))}" target="_blank" rel="noopener">${esc(s.signal.source)} post</a></div>` : '';
   const canText = s.message && s.person && s.person.phone;
+  const ev = evBits(s);
+  const evLine = (s.url || s.location || s.event_time) ? `<div class="sug-why">${[s.event_time ? esc(fmtTime(s.event_time)) : '', s.location ? esc(s.location) : '', ev.link].filter(Boolean).join(' · ')}</div>` : '';
   $pBody.innerHTML = `
   <form class="card form" id="sgf">
     <label class="lbl" for="sg_kind">Kind</label>
@@ -157,6 +190,7 @@ export async function renderSuggestion(id) {
     <label class="lbl" for="sg_msg">Message</label><textarea class="field" id="sg_msg" style="min-height:90px" placeholder="The drafted text">${esc(s.message || '')}</textarea>
     <label class="lbl" for="sg_reason">Why now</label><textarea class="field" id="sg_reason" style="min-height:56px">${esc(s.reason || '')}</textarea>
     ${src}
+    ${evLine}
     <div class="grid2"><div><label class="lbl" for="sg_for">For date</label><input class="field" id="sg_for" type="date" value="${esc(s.for_date || '')}"></div>
     <div><label class="lbl">Priority</label><div class="pills" id="sgPri">${[[1, 'High'], [2, 'Normal'], [3, 'Low']].map(([n, l]) => `<button type="button" class="pill${(s.priority || 2) === n ? ' on' : ''}" data-p="${n}">${l}</button>`).join('')}</div></div></div>
     <div class="actions" style="margin-top:14px"><button class="btn primary">Save edits</button><button type="button" class="btn" id="sg_cancel">Cancel</button></div>
@@ -173,6 +207,7 @@ export async function renderSuggestion(id) {
   <div class="card" style="margin-top:12px"><div class="sug-btns">
     ${canText ? `<a class="btn small primary" href="${smsHref(s.person.phone, s.message)}">Text</a>` : ''}
     ${s.message ? `<button class="btn small" id="sg_copy">Copy</button>` : ''}
+    ${canCalendar(s) ? `<button class="btn small" id="sg_cal">Add to calendar</button>` : ''}
     <button class="btn small" id="sg_done">${SENDABLE.has(s.kind) && s.person_id ? 'Sent ✓' : 'Done ✓'}</button>
     <button class="mini" id="sg_dismiss">Dismiss</button>
   </div></div>`;
@@ -222,6 +257,12 @@ export async function renderSuggestion(id) {
   };
   document.getElementById('sg_task').onclick = (e) => { e.currentTarget.disabled = true; schedule('tasks', state.hasSeries).finally(() => { const b = document.getElementById('sg_task'); if (b) b.disabled = false; }); };
   document.getElementById('sg_fu').onclick = (e) => { e.currentTarget.disabled = true; schedule('follow_ups', state.hasFuSeries).finally(() => { const b = document.getElementById('sg_fu'); if (b) b.disabled = false; }); };
+  const calBtn = document.getElementById('sg_cal');
+  if (calBtn) calBtn.onclick = async () => {
+    calBtn.disabled = true;
+    try { await addSuggestionToCalendar({ ...s, for_date: document.getElementById('sg_for').value || s.for_date, title: document.getElementById('sg_title').value.trim() || s.title }); toast('On your calendar ✓'); calBtn.remove(); }
+    catch { calBtn.disabled = false; }
+  };
   const copyBtn = document.getElementById('sg_copy');
   if (copyBtn) copyBtn.onclick = async () => { try { await navigator.clipboard.writeText(document.getElementById('sg_msg').value); toast('Copied'); } catch { toast('Copy failed: long-press the text instead', true); } };
   document.getElementById('sg_done').onclick = async (e) => {
@@ -247,7 +288,7 @@ export async function personAssistant(id) {
   if (!state.hasAssistant) return { signals: [], sugs: [] };
   const [sig, sugs] = await Promise.all([
     sb.from('signals').select('id,source,kind,summary,url,observed_on').eq('person_id', id).order('observed_on', { ascending: false }).limit(8),
-    sb.from('suggestions').select('id,kind,title,message,reason,for_date,priority,status,created_by,person_id,person:people(id,name,phone),signal:signals(source,url)')
+    sb.from('suggestions').select('id,kind,title,message,reason,for_date,priority,status,url,event_time,location,event_id,created_by,person_id,person:people(id,name,phone),signal:signals(source,url)')
       .eq('person_id', id).eq('status', 'new').order('priority'),
   ]);
   return { signals: sig.error ? [] : sig.data, sugs: sugs.error ? [] : sugs.data };
