@@ -1,7 +1,7 @@
 // Pages: the main views. Each renders into $view and wires its own events.
 
 import { sb, q, loadPeople, withArchivedPerson, openFollowups, loadEvents, openTasksSoft, openActionMap, buildActionMap } from './db.js';
-import { loadSuggestions, assistantBlock, bindAssistant } from './assistant.js';
+import { loadSuggestions, assistantBlock, bindAssistant, sugItem, SUG_KINDS } from './assistant.js';
 import { $view, $kicker, setHead, st, sec, monoDate, initials, personRow, personStatus, personMeta, kickerDate, openPanel, panelHead, closePanel, actDot, impRank, toast, $pBody, personPicker, bindPersonPickers } from './ui.js';
 import { today, fmtDate, daysBetween, addDays, mondayOf, ago, dayOf, streakOf, dueInfo, upcomingBirthdays, agoShort, feedDay, esc } from './utils.js';
 import { state, TIERS, KINDS, RELS, FAMILY_VALUES, FAMILY_PLURAL, ACTION_CATEGORIES, isFamilyRel } from './config.js';
@@ -130,6 +130,7 @@ export async function renderDashboard() {
     </div>
     <div class="dash" style="margin-top:12px"><div class="dash-main">
       ${assistantBlock(sugs)}
+      <div class="linkrow"><a href="#/assistant">Open the full Assistant page →</a></div>
       ${sec('Needs attention', attentionAll.length, '', attentionAll.length ? 'amber' : '')}
       ${stale.length ? `<ul class="list card">${stale.slice(0, 8).map((p) => personRow(p, st(p.last_contact ? 'gray' : 'amber', p.last_contact ? ago(p.last_contact) : 'never logged'), actDot(actMap[p.id]))).join('')}</ul>
         <p class="note">Tier A and B, no logged conversation in 30+ days. Mohawk Honda people are left out since you see them daily.${attentionAll.length > 8 ? ` <a href="#/overdue">See all ${attentionAll.length} on the Overdue page</a>` : ''}</p>` : '<div class="card empty">Every Tier A and B person has a logged conversation in the last 30 days.</div>'}
@@ -175,6 +176,53 @@ export async function renderDashboard() {
 }
 
 // ---------- today = just the day: due today/tomorrow/this week ----------
+// ---------- Assistant: full page — every suggestion, what's new, handled ----------
+export async function renderAssistant() {
+  setHead({ kicker: 'AI relationship manager', title: 'Assistant', tab: 'assistant' });
+  if (!state.hasAssistant) {
+    $view.innerHTML = `${sec('Assistant')}<div class="card empty">The assistant layer isn't set up yet — it needs the suggestions and signals tables.</div>`;
+    return;
+  }
+  const t = today();
+  const [sugs, people, handled, sigs] = await Promise.all([
+    loadSuggestions(),
+    loadPeople(),
+    q(sb.from('suggestions').select('id,kind,title,for_date,priority,status,acted_at,person_id').in('status', ['done', 'dismissed']).not('acted_at', 'is', null).gte('acted_at', `${addDays(t, -14)}T00:00:00`).order('acted_at', { ascending: false }).limit(40)),
+    q(sb.from('signals').select('id,source,kind,summary,url,observed_on,person_id').gte('observed_on', addDays(t, -21)).order('observed_on', { ascending: false }).limit(40)),
+  ]);
+  const byId = Object.fromEntries(people.map((p) => [p.id, p]));
+  const dueToday = sugs.filter((s) => s.for_date === t).length;
+  const kindsHere = Object.keys(SUG_KINDS).filter((k) => sugs.some((s) => s.kind === k));
+  $view.innerHTML = `
+    ${sec('Suggestions', sugs.length)}
+    <p class="note">${sugs.length ? `${dueToday} due today · tap a title to open it, edit it, or schedule it as a task or follow-up.` : 'No open suggestions. The assistant refreshes once a day.'}</p>
+    ${kindsHere.length > 1 ? `<div class="pills" id="sugKinds"><button class="pill on" data-k="">All</button>${kindsHere.map((k) => `<button class="pill" data-k="${k}">${esc(SUG_KINDS[k])}</button>`).join('')}</div>` : ''}
+    <div id="sugList" style="margin-top:12px"></div>
+    ${sec("What's new", sigs.length)}
+    ${sigs.length ? `<div class="card"><ul class="list">${sigs.map((g) => {
+      const p = byId[g.person_id];
+      const url = /^https?:\/\//i.test(String(g.url || '').trim()) ? String(g.url).trim() : '';
+      return `<li class="fu"><div class="main"><span class="t">${esc(g.summary)}</span><span class="meta">${st('gray', monoDate(g.observed_on))}<span class="typebadge">${esc(g.source)}</span>${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">Open</a>` : ''}</span></div></li>`;
+    }).join('')}</ul></div>` : '<div class="card empty">Nothing in the last 3 weeks. Muse adds updates from Facebook and Instagram.</div>'}
+    ${handled.length ? `<details class="more"><summary>Recently handled · ${handled.length}</summary><div class="card"><ul class="list">${handled.map((s) => {
+      const p = byId[s.person_id];
+      return `<li class="fu"><div class="main"><span class="t">${esc(s.title)}</span><span class="meta">${s.status === 'done' ? st('ring', 'Done') : st('gray', 'Dismissed')}${s.acted_at ? st('gray', monoDate(s.acted_at.slice(0, 10))) : ''}${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}</span></div></li>`;
+    }).join('')}</ul></div></details>` : ''}`;
+  const listEl = document.getElementById('sugList');
+  const renderList = (kind) => {
+    const shown = kind ? sugs.filter((s) => s.kind === kind) : sugs;
+    listEl.innerHTML = shown.length
+      ? `<div class="card"><ul class="list">${shown.map(sugItem).join('')}</ul></div>`
+      : '<div class="card empty">Nothing in this kind right now.</div>';
+    bindAssistant(shown, renderAssistant, listEl);
+  };
+  renderList('');
+  $view.querySelectorAll('#sugKinds [data-k]').forEach((b) => (b.onclick = () => {
+    $view.querySelectorAll('#sugKinds [data-k]').forEach((x) => x.classList.toggle('on', x === b));
+    renderList(b.dataset.k);
+  }));
+}
+
 export async function renderToday() {
   setHead({ kicker: kickerDate(), title: 'Today', tab: 'today', add: true });
   const t = today();
