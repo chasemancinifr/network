@@ -54,7 +54,7 @@ export function setHead({ kicker = '', title, tab = null, add = false }) {
   $kicker.textContent = kicker; $title.textContent = title; $add.hidden = !add; $tabs.hidden = !state.session;
   document.querySelectorAll('.nav a, .nav button').forEach((a) => {
     const tb = a.dataset.tab;
-    a.classList.toggle('on', tb === tab || (tb === 'more' && (tab === 'recent' || tab === 'settings')));
+    a.classList.toggle('on', tb === tab || (tb === 'more' && (tab === 'recent' || tab === 'settings' || tab === 'assistant')));
   });
   document.title = title === 'Network' ? 'Network' : `${title} · Network`;
 }
