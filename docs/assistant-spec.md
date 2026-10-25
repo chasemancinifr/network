@@ -15,6 +15,42 @@ Roles (decided by Chase, Oct 23 2026):
   draft filled in), Copy, Sent ✓ (logs a real `message` interaction, so
   last_contact moves), or Dismiss.
 
+## Scope correction (Chase, Oct 24 2026)
+Network is primarily a **personal-life** CRM — family, friends, hobbies,
+interests, an entire personal network — with business and sales as one part
+of it, not the frame. Suggestions, briefs, and digests lead with personal
+life; sales-floor items are one section among others, never the whole
+picture.
+
+## Approved extensions (Chase, Oct 24 2026)
+1. **Post-sale touches stay VERY light.** Chase's work system already
+   reminds him constantly from a database of hundreds — the assistant must
+   not duplicate it. At most the highest-value moments (a thank-you, one
+   real check-in), never a multi-step cadence.
+2. **Life-event fast lane.** A signal with kind=life_event gets a
+   priority-1 suggestion on the next daily run, specific to the event —
+   never a generic template. Suggestions and tasks stay current and
+   specific, not generic.
+3. **Reply loop.** When Chase marks a message suggestion Sent, a follow-up
+   is created for +7 days ("Did <name> reply?") so threads don't die
+   one-and-done. (The app implements this in the Sent handler.)
+4. **Re-entry drafts.** For needs-attention people (Tier A/B, no logged
+   conversation in 30+ days, outside Mohawk), drafts are written from their
+   real last interaction + latest signal — specific openers, never generic
+   "it's been a while" text. Skip anyone with nothing specific to cite.
+5. **Introductions.** When two people share real ground (an interest, a
+   circle, a world) and would genuinely benefit from meeting, suggest the
+   intro with the shared ground spelled out. Only on real shared ground —
+   interests are still thin, so this waits until the interests base grows;
+   no generic pairings.
+6. **Events pipeline (Muse).** Chase's Facebook Interested events feed the
+   CRM: friends going or interested get added, as do important listed
+   people (hosts, organizers, performers). Plus event prep: who'll be
+   there, what they're into, what to ask.
+7. **Daily brief, personal-first.** Any brief or digest leads with family,
+   friends, events, hobbies, and interests; sales-floor items are one
+   section, not the frame.
+
 ## Tables (migrations `assistant_1…16`, Oct 23 2026)
 
 ### `people` — two new columns

@@ -88,6 +88,19 @@ export function assistantBlock(rows, limit = 5) {
     ${rest.length ? `<details class="more"><summary>${rest.length} more</summary><ul class="list">${rest.map(sugItem).join('')}</ul></details>` : ''}</div>`;
 }
 
+// Reply loop: after a sent message, leave a +7 day check so the thread
+// doesn't die one-and-done. Its own failure never blocks the Sent action.
+const firstName = (n) => String(n || 'them').replace(/\(.*?\)/g, ' ').trim().split(/\s+/)[0] || 'them';
+const plusDays = (d, n) => { const dt = new Date(`${d}T00:00:00`); dt.setDate(dt.getDate() + n); return dt.toLocaleDateString('en-CA'); };
+async function replyLoop(s, message) {
+  if (!s.person_id) return;
+  try {
+    await q(sb.from('follow_ups').insert({ person_id: s.person_id, status: 'open',
+      title: `Did ${firstName(s.person ? s.person.name : '')} reply?`,
+      detail: message ? `Sent: ${message}` : s.title, due_date: plusDays(today(), 7) }));
+  } catch { toast('Sent logged, but the reply check did not save', true); }
+}
+
 export function bindAssistant(rows, rerender, root) {
   if (!state.hasAssistant) return;
   const byId = Object.fromEntries(rows.map((s) => [s.id, s]));
@@ -104,6 +117,7 @@ export function bindAssistant(rows, rerender, root) {
       if (SENDABLE.has(s.kind) && s.person_id) {
         await q(sb.from('interactions').insert({ person_id: s.person_id, kind: 'message', happened_at: today(), summary: s.message ? `Sent: ${s.message}` : s.title }));
         state.people = null;
+        await replyLoop(s, s.message);
       }
       await close(s.id, 'done');
       toast(SENDABLE.has(s.kind) && s.person_id ? 'Logged as a message ✓' : 'Done ✓');
@@ -217,6 +231,7 @@ export async function renderSuggestion(id) {
         const msg = document.getElementById('sg_msg').value.trim();
         await q(sb.from('interactions').insert({ person_id: s.person_id, kind: 'message', happened_at: today(), summary: msg ? `Sent: ${msg}` : document.getElementById('sg_title').value.trim() }));
         state.people = null;
+        await replyLoop(s, msg);
       }
       await closeSug('done'); toast('Done ✓'); dismissPanel();
     } catch { b.disabled = false; }

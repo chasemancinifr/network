@@ -184,16 +184,38 @@ export async function renderAssistant() {
     return;
   }
   const t = today();
-  const [sugs, people, handled, sigs] = await Promise.all([
+  const [sugs, people, handled, sigs, evs, fus] = await Promise.all([
     loadSuggestions(),
     loadPeople(),
     q(sb.from('suggestions').select('id,kind,title,for_date,priority,status,acted_at,person_id').in('status', ['done', 'dismissed']).not('acted_at', 'is', null).gte('acted_at', `${addDays(t, -14)}T00:00:00`).order('acted_at', { ascending: false }).limit(40)),
     q(sb.from('signals').select('id,source,kind,summary,url,observed_on,person_id').gte('observed_on', addDays(t, -21)).order('observed_on', { ascending: false }).limit(40)),
+    loadEvents(),
+    openFollowups(),
   ]);
   const byId = Object.fromEntries(people.map((p) => [p.id, p]));
   const dueToday = sugs.filter((s) => s.for_date === t).length;
   const kindsHere = Object.keys(SUG_KINDS).filter((k) => sugs.some((s) => s.kind === k));
+  // Week ahead, personal first: family & friends lead; work is one section.
+  const weekEnd = addDays(t, 7);
+  const inCircles = (p, c) => p && (p.circles || []).includes(c);
+  const evWeek = (evs || []).filter((e) => e.event_date >= t && e.event_date <= weekEnd);
+  const famEv = evWeek.filter((e) => inCircles(byId[e.person_id], 'Family'));
+  const bdays = upcomingBirthdays(people, 7);
+  const famSigs = sigs.filter((g) => inCircles(byId[g.person_id], 'Family') || inCircles(byId[g.person_id], 'Friend')).slice(0, 5);
+  const workEv = evWeek.filter((e) => inCircles(byId[e.person_id], 'Mohawk Honda'));
+  const workFu = (fus || []).filter((f) => f.due_date && f.due_date >= t && f.due_date <= weekEnd && inCircles(byId[f.person_id], 'Mohawk Honda')).slice(0, 4);
+  const digestEmpty = !famEv.length && !bdays.length && !famSigs.length && !workEv.length && !workFu.length;
+  const digest = digestEmpty ? '<div class="card empty">Quiet week — nothing on the family, friends, or work calendars.</div>' : `<div class="card">
+    ${famEv.length ? `<div class="lbl">Family events</div><ul class="list">${famEv.map((e) => { const p = byId[e.person_id]; return `<li class="fu"><div class="main"><span class="t">${esc(e.title)}</span><span class="meta">${st('gray', monoDate(e.event_date))}${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}</span></div></li>`; }).join('')}</ul>` : ''}
+    ${bdays.length ? `<div class="lbl">Birthdays</div><ul class="list">${bdays.map((x) => `<li class="fu"><div class="main"><span class="t"><a href="#/p/${x.p.id}">${esc(x.p.name)}</a></span><span class="meta">${st(x.in <= 1 ? 'amber' : 'gray', x.in === 0 ? 'today' : x.in === 1 ? 'tomorrow' : `in ${x.in}d`)}</span></div></li>`).join('')}</ul>` : ''}
+    ${famSigs.length ? `<div class="lbl">Friends & family, lately</div><ul class="list">${famSigs.map((g) => { const p = byId[g.person_id]; return `<li class="fu"><div class="main"><span class="t">${esc(g.summary)}</span><span class="meta">${st('gray', monoDate(g.observed_on))}${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}</span></div></li>`; }).join('')}</ul>` : ''}
+    ${(workEv.length || workFu.length) ? `<div class="lbl">Work</div><ul class="list">
+      ${workEv.map((e) => { const p = byId[e.person_id]; return `<li class="fu"><div class="main"><span class="t">${esc(e.title)}</span><span class="meta">${st('gray', monoDate(e.event_date))}${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}</span></div></li>`; }).join('')}
+      ${workFu.map((f) => { const p = byId[f.person_id]; return `<li class="fu"><div class="main"><span class="t">${esc(f.title)}</span><span class="meta">${st('gray', monoDate(f.due_date))}${p ? `<span><a href="#/p/${p.id}">${esc(p.name)}</a></span>` : ''}</span></div></li>`; }).join('')}
+    </ul>` : ''}</div>`;
   $view.innerHTML = `
+    ${sec('Week ahead, personal first')}
+    ${digest}
     ${sec('Suggestions', sugs.length)}
     <p class="note">${sugs.length ? `${dueToday} due today · tap a title to open it, edit it, or schedule it as a task or follow-up.` : 'No open suggestions. The assistant refreshes once a day.'}</p>
     ${kindsHere.length > 1 ? `<div class="pills" id="sugKinds"><button class="pill on" data-k="">All</button>${kindsHere.map((k) => `<button class="pill" data-k="${k}">${esc(SUG_KINDS[k])}</button>`).join('')}</div>` : ''}
